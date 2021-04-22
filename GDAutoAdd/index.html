@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8"/>
+  <meta
+          content="width=device-width, initial-scale=1.0,maximum-scale=1.0, user-scalable=no"
+          name="viewport"
+  />
+  <title>加入Google TeamDrive</title>
+  <link
+          href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"
+          rel="stylesheet"
+  />
+  <script src="https://cdn.bootcss.com/jquery/3.4.1/jquery.min.js"></script>
+
+  <script
+          crossorigin="anonymous"
+          integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1"
+          src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"
+  ></script>
+  <script
+          crossorigin="anonymous"
+          integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM"
+          src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"
+  ></script>
+  ${captcha_script}
+  <!--源码地址: https://github.com/clatteringmarion/GDAutoAdd/blob/master/main.js-->
+</head>
+  <body>
+    <div id="app">
+      <div id="container" class="container">
+        <div class="row">
+          <div class="col-sm-8 offset-sm-2 col-md-6 offset-md-3 text-center">
+            <h1>加入Google TeamDrive</h1>
+             <p>${scriptversion}</p>
+            <p>
+              后端多个API请求, 过程耗时较长, 请耐心等待,
+              <span style="color: red"><b>切勿重复提交</b></span>
+            </p>
+            <br />
+            <div class="info-form text-left">
+              <form id="teamDriveForm">
+                <div class="form-group">
+                  <label for="emailAddress" class="sr-only">
+                    您的GMail邮箱地址
+                  </label>
+                  <input
+                          type="email"
+                          class="form-control"
+                          id="emailAddress"
+                          placeholder="您的GMail邮箱地址"
+                  />
+                </div>
+                ${captcha_prompt}
+                <div class="col-md-12 text-center">
+                  <button class="btn btn-success" name="method" type="submit" value="add">加入</button>
+                  <button class="btn btn-danger" name="method" type="submit" value="remove">移除</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      class="modal fade"
+      id="loadMe"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="loadMeLabel"
+    >
+      <div class="modal-dialog modal-sm" role="document">
+        <div class="modal-content">
+          <div class="modal-body text-center">
+            <div class="d-flex justify-content-center">
+              <div class="spinner-border" role="status">
+                <span class="sr-only">正在创建中...</span>
+              </div>
+            </div>
+            <div clas="loader-txt">
+              <p>正在创建中...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <footer class="page-footer font-small blue">
+      <div class="footer-copyright text-center py-3">
+        © 2020 ${bottom_copyRight}
+        <br />
+        源码:<a href="https://github.com/clatteringmarion/GDAutoAdd/blob/master/main.js">GitHub</a>
+        <br />
+        Special Thanks:
+        <a href="https://github.com/donwa/goindex">
+          donwa
+        </a>
+        <a href="https://github.com/yyuueexxiinngg/some-scripts/blob/master/workers/google/drive/create-share-teamdrive.js">
+          yyuueexxiinngg
+        </a>
+      </div>
+    </footer>
+  </body>
+
+  <script>
+      $("#teamDriveForm").on("submit", function(event) {
+        event.preventDefault();
+
+        $("#loadMe").modal({
+          backdrop: "static", //remove ability to close modal with click
+          keyboard: false, //remove option to close with keyboard
+          show: true //Display loader!
+        });
+        $.ajax({
+          type: "POST",
+          url: "/drive",
+          data: JSON.stringify({
+            emailAddress: $("input[id=emailAddress]").val(),
+            method: $(event.originalEvent.submitter).val(),
+            captcha_token: ${captcha_token},
+          }),
+          success: function(data) {
+            $("#loadMe").modal("hide");
+            alert("成功!");
+          },
+          error: function(request, status, error) {
+            $("#loadMe").modal("hide");
+            alert("失败!" + request.responseText);
+          },
+          contentType: "application/json"
+        });
+    })
+  </script>
+  <style type="text/css">
+    .card-img-top {
+      width: 100%;
+      object-fit: cover;
+    }
+    ${additional_css}
+  </style>
+</html>
