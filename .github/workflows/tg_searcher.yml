@@ -1,0 +1,37 @@
+name: Tg Searcher Backup
+
+on:
+  push:
+    branches: main
+  schedule:
+    - cron: 0 4 * * 5
+  workflow_dispatch:
+    inputs:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Git Clone Repository
+      run: |
+        git clone https://github.com/SharzyL/tg_searcher.git gitclone
+
+    - name: Deploy to Pages
+      uses: JamesIves/github-pages-deploy-action@4.1.1
+      with:
+        git-config-name: GitHub Action
+        git-config-email: action@github.com
+        branch: main
+        folder: gitclone
+        target-folder: tg_searcher
+        commit-message: Action Update
+        clean: true
+        single-commit: false
+
+    - name: Delete workflow runs
+      uses: Mattraks/delete-workflow-runs@main
+      with:
+        retain_days: 2
+        keep_minimum_runs: 6
