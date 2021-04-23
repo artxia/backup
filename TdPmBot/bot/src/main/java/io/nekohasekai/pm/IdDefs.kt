@@ -1,0 +1,19 @@
+package io.nekohasekai.pm
+
+const val PERSIST_BOT_CREATE = 0
+const val PERSIST_SET_START_MESSAGES = 1
+const val PERSIST_NEW_FUNCTION = 2
+const val PERSIST_UNDER_FUNCTION = 3
+const val PERSIST_EDIT_FUNCTION = 4
+
+const val DATA_SWITCH_LOCALE = 0
+const val DATA_SET_START_INTEGRATION = 1
+const val DATA_EDIT_BOTS = 2
+const val DATA_EDIT_BOT = 3
+const val DATA_EDIT_STARTS_MESSAGES = 4
+const val DATA_DELETE_BOT_MENU = 5
+const val DATA_DELETE_MESSAGE = 6
+const val DATA_EDIT_OPTIONS = 7
+const val DATA_EDIT_COMMANDS = 8
+const val DATA_EDIT_COMMAND = 9
+const val DATA_IMPORT_BOT = 10

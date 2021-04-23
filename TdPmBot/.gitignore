@@ -1,0 +1,10 @@
+*.iml
+.idea/
+/.gradle/
+target/
+build/
+/data/
+/cache/
+/libs/
+/bot.conf
+/pm.yml
