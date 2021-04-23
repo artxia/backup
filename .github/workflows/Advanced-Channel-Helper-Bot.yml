@@ -1,8 +1,6 @@
 name: Advanced Channel Helper Bot Backup
 
 on:
-  push:
-    branches: main
   schedule:
     - cron: 0 4 * * 5
   workflow_dispatch:
