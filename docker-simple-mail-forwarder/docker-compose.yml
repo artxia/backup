@@ -1,0 +1,9 @@
+smf:
+    image: zixia/simple-mail-forwarder
+    ports:
+        - "25:25"
+    environment:
+        - SMF_CONFIG=testi@testo.com:test@test.com:test
+        
+    deployment_strategy: high_availability
+    restart: always
