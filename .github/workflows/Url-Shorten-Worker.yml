@@ -1,8 +1,6 @@
 name: Url Shorten Worker Backup
 
 on:
-  push:
-    branches: main
   schedule:
     - cron: 0 4 * * 5
   workflow_dispatch:
@@ -17,6 +15,7 @@ jobs:
     - name: Git Clone Repository
       run: |
         git clone https://github.com/xyTom/Url-Shorten-Worker.git gitclone
+        git clone -b gh-pages https://github.com/xyTom/Url-Shorten-Worker.git gitclone/gh-pages
 
     - name: Deploy to Pages
       uses: JamesIves/github-pages-deploy-action@4.1.1
