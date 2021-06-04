@@ -357,8 +357,8 @@ speedtest_ServerFailure: Unable to determine the best server.
 speedtest_ConnectFailure: Connection failure.
 # connection
 connection_des: Display the connection information between the server running PagerMaid-Modify and the Telegram server.
-connection_hint: connection information
-connection_country: country
+connection_hint: Connection information
+connection_country: Area
 connection_dc: Data center connected to
 connection_nearest_dc: nearest data center
 # ping
@@ -391,6 +391,12 @@ us_static_uploading: Uploading pictures...
 us_static_rounding: Rounding in progress...
 us_change_rounding_true: Automatic conversion of rounded corners for stickers has been turned on.
 us_change_rounding_false: Automatic conversion of rounded corners for stickers has been turned off.
+## merge
+merge_command_error: Command parameter error!
+merge_processing_left: Processing the 【
+merge_processing_right: 】st message.
+merge_total_processed_left: A total of 【
+merge_total_processed_right: 】 stickers were processed.
 
 # system
 # sh
