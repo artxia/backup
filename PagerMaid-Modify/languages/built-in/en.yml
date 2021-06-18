@@ -73,12 +73,23 @@ profile_no: false
 profile_name: Profile
 profile_username: Username
 profile_fname: First name
-pfofile_lname: Last name
+profile_lname: Last name
 profile_bio: Bio
 profile_gic: Group in common
 profile_verified: Verified
 profile_restricted: Restricted
 profile_type: Type
+# block
+block_des: Block an user.
+block_process: Processing . . .
+block_success: Success block
+block_exist: is already a blacklist.
+## unblock
+unblock_des: Unblock an user.
+unblock_process: Processing . . .
+unblock_success: Success unblock
+unblock_exist: isn't in a blacklist.
+
 # avoid
 # ghost
 ghost_des: Toggles ghosting of chat, requires redis.
@@ -217,6 +228,13 @@ lang_change_to: The language has been switched to
 lang_reboot: Restarting.
 lang_current_lang: The current language is
 lang_all_lang: "All available languages are "
+# alias
+alias_des: Redirect original command.
+alias_list: 'The following is a list of redirect commands:'
+alias_no: You have not redirected any original commands.
+alias_success: Edit redirection command success，PagerMaid-Modify is restarting.
+alias_exist: Something went wrong, woooo~ The command that is redirected is already occupied.
+alias_no_exist: Something went wrong, woooo~ The original command is not redirected.
 # message
 # id
 id_des: Get various information about a message.
@@ -361,6 +379,13 @@ connection_hint: Connection information
 connection_country: Area
 connection_dc: Data center connected to
 connection_nearest_dc: nearest data center
+# pingdc
+pingdc_des: Test your server to the delay of the telegram data servers.
+pingdc_1: DC1(Miami FL,USA)
+pingdc_2: DC2(Amsterdam,NL)
+pingdc_3: DC3(Miami FL,USA)
+pingdc_4: DC4(Amsterdam,NL)
+pingdc_5: DC5(Singapore)
 # ping
 ping_des: Calculate the delay between the server running PagerMaid-Modify and the Telegram server.
 # topcloud
@@ -404,6 +429,14 @@ sh_des: remotely execute Shell commands on Telegram.
 sh_parameters: <command>
 sh_channel: Something went wrong ~ The current PagerMaid-Modify configuration prohibits the execution of Shell commands in the channel.
 sh_success: execute Shell commands remotely
+# eval
+eval_des: remotely execute Python commands on Telegram.
+eval_parameters: <command>
+eval_channel: Something went wrong ~ The current PagerMaid-Modify configuration prohibits the execution of Python commands in the channel.
+eval_success: execute Python commands remotely
+eval_need_dev: '**Please note: This command can directly operate your account**
+
+This command is only for developers. If you know what you are doing, please manually configure the `dev` item in the Redis database to any value.'
 # restart
 restart_des: Restart PagerMaid-Modify
 restart_processing: Try to restart PagerMaid-Modify.

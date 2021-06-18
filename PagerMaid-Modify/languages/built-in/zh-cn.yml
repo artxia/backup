@@ -79,12 +79,22 @@ profile_no: 否
 profile_name: 用户简介
 profile_username: 道纹
 profile_fname: 名字
-pfofile_lname: 姓氏
+profile_lname: 姓氏
 profile_bio: 目前已知的情报
 profile_gic: 共同裙
 profile_verified: 官方认证
 profile_restricted: 受限制
 profile_type: 类型
+## block
+block_des: 拉黑一个用户
+block_process: 正在拉黑中 . . .
+block_success: 成功拉黑
+block_exist: 已存在黑名单中。
+## unblock
+unblock_des: 取消拉黑一个用户
+unblock_process: 正在取消拉黑中 . . .
+unblock_success: 成功取消拉黑
+unblock_exist: 不存在黑名单中。
 
 # avoid
 ## ghost
@@ -230,7 +240,13 @@ lang_change_to: 语言已切换到
 lang_reboot: 正在重新启动。
 lang_current_lang: 当前语言是
 lang_all_lang: 所有可用的语言有：
-
+## alias
+alias_des: 重定向原始命令。
+alias_list: 以下是重定向命令列表：
+alias_no: 您还没有重定向任何原始命令。
+alias_success: 编辑重定向命令成功，PagerMaid-Modify 正在重新启动。
+alias_exist: 出错了呜呜呜 ~ 重定向指向的命令已被占用。
+alias_no_exist: 出错了呜呜呜 ~ 原始命令没有被重定向。
 # message
 ## id
 id_des: 获取一条消息的各种信息。
@@ -378,6 +394,13 @@ connection_hint: 连接信息
 connection_country: 地区
 connection_dc: 连接到的数据中心
 connection_nearest_dc: 最近的数据中心
+## pingdc
+pingdc_des: 测试您的服务器到 Telegram 数据服务器的延迟之间的延迟。
+pingdc_1: DC1(美国-迈阿密)
+pingdc_2: DC2(荷兰-阿姆斯特丹)
+pingdc_3: DC3(美国-迈阿密)
+pingdc_4: DC4(荷兰-阿姆斯特丹)
+pingdc_5: DC5(新加坡)
 ## ping
 ping_des: 计算运行 PagerMaid-Modify 的服务器和 Telegram 服务器之间的延迟。
 ## topcloud
@@ -422,6 +445,14 @@ sh_des: 在 Telegram 上远程执行 Shell 命令。
 sh_parameters: <命令>
 sh_channel: 出错了呜呜呜 ~ 当前 PagerMaid-Modify 的配置禁止在频道中执行 Shell 命令。
 sh_success: 远程执行 Shell 命令
+## eval
+eval_des: 在 Telegram 上远程执行 Python 命令。
+eval_parameters: <命令>
+eval_channel: 出错了呜呜呜 ~ 当前 PagerMaid-Modify 的配置禁止在频道中执行 Python 命令。
+eval_success: 远程执行 Python 命令
+eval_need_dev: '**请注意：此命令可以直接操作您的账户**
+
+此命令仅适用于开发者，如果您知道您在做什么的话，请手动在 Redis 数据库配置 dev 项为任意值。'
 ## restart
 restart_des: 使 PagerMaid-Modify 重新启动
 restart_processing: 尝试重新启动 PagerMaid-Modify.

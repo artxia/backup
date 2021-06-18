@@ -1,9 +1,12 @@
 """ PagerMaid module that contains utilities related to system status. """
 
 from json import loads
+from PIL import Image
+from requests import get
 from os import remove, popen
 from datetime import datetime
-from speedtest import distance, Speedtest, ShareResultsConnectFailure, ShareResultsSubmitFailure, NoMatchedServers, SpeedtestBestServerFailure
+from speedtest import distance, Speedtest, ShareResultsConnectFailure, ShareResultsSubmitFailure, NoMatchedServers, \
+    SpeedtestBestServerFailure
 from telethon import functions
 from platform import python_version, uname
 from wordcloud import WordCloud
@@ -14,10 +17,18 @@ from pathlib import Path
 from pagermaid import log, config, redis_status
 from pagermaid.utils import execute, upload_attachment
 from pagermaid.listener import listener
-from pagermaid.utils import lang
+from pagermaid.utils import lang, alias_command
+
+DCs = {
+    1: "149.154.175.50",
+    2: "149.154.167.51",
+    3: "149.154.175.100",
+    4: "149.154.167.91",
+    5: "91.108.56.130"
+}
 
 
-@listener(is_plugin=False, outgoing=True, command="sysinfo",
+@listener(is_plugin=False, outgoing=True, command=alias_command("sysinfo"),
           description=lang('sysinfo_des'))
 async def sysinfo(context):
     """ Retrieve system information via neofetch. """
@@ -26,7 +37,7 @@ async def sysinfo(context):
     await context.edit(f"`{result}`")
 
 
-@listener(is_plugin=False, outgoing=True, command="fortune",
+@listener(is_plugin=False, outgoing=True, command=alias_command("fortune"),
           description=lang('fortune_des'))
 async def fortune(context):
     """ Reads a fortune cookie. """
@@ -37,7 +48,7 @@ async def fortune(context):
     await context.edit(result)
 
 
-@listener(is_plugin=False, outgoing=True, command="fbcon",
+@listener(is_plugin=False, outgoing=True, command=alias_command("fbcon"),
           description=lang('fbcon_des'))
 async def tty(context):
     """ Screenshots a TTY and prints it. """
@@ -68,18 +79,18 @@ async def tty(context):
     await log("Screenshot of binded framebuffer console taken.")
 
 
-@listener(is_plugin=False, outgoing=True, command="status",
+@listener(is_plugin=False, outgoing=True, command=alias_command("status"),
           description=lang('status_des'))
 async def status(context):
     database = lang('status_online') if redis_status() else lang('status_offline')
     text = (f"**{lang('status_hint')}** \n"
-        f"{lang('status_name')}: `{uname().node}` \n"
-        f"{lang('status_platform')}: `{platform}` \n"
-        f"{lang('status_release')}: `{uname().release}` \n"
-        f"{lang('status_python')}: `{python_version()}` \n"
-        f"{lang('status_telethon')}: `{telethon_version.__version__}` \n"
-        f"{lang('status_db')}: `{database}`"
-    )
+            f"{lang('status_name')}: `{uname().node}` \n"
+            f"{lang('status_platform')}: `{platform}` \n"
+            f"{lang('status_release')}: `{uname().release}` \n"
+            f"{lang('status_python')}: `{python_version()}` \n"
+            f"{lang('status_telethon')}: `{telethon_version.__version__}` \n"
+            f"{lang('status_db')}: `{database}`"
+            )
     await context.edit(text)
     dialogs = await context.client.get_dialogs()
     dialogs = len(dialogs)
@@ -87,7 +98,7 @@ async def status(context):
     await context.edit(text)
 
 
-@listener(is_plugin=False, outgoing=True, command="speedtest",
+@listener(is_plugin=False, outgoing=True, command=alias_command("speedtest"),
           description=lang('speedtest_des'))
 async def speedtest(context):
     """ Tests internet speed using speedtest. """
@@ -141,11 +152,28 @@ async def speedtest(context):
         f"Latency: `{result['ping']}` \n"
         f"Timestamp: `{result['timestamp']}`"
     )
-    await context.client.send_file(context.chat_id, result['share'], caption=des)
+    # 开始处理图片
+    data = get(result['share']).content
+    with open('speedtest.png', mode='wb') as f:
+        f.write(data)
+    try:
+        img = Image.open('speedtest.png')
+        c = img.crop((17, 11, 727, 389))
+        c.save('speedtest.png')
+    except:
+        pass
+    try:
+        await context.client.send_file(context.chat_id, 'speedtest.png', caption=des)
+    except:
+        return
+    try:
+        remove('speedtest.png')
+    except:
+        pass
     await context.delete()
 
 
-@listener(is_plugin=False, outgoing=True, command="connection",
+@listener(is_plugin=False, outgoing=True, command=alias_command("connection"),
           description=lang('connection_des'))
 async def connection(context):
     """ Displays connection information between PagerMaid and Telegram. """
@@ -158,7 +186,24 @@ async def connection(context):
     )
 
 
-@listener(is_plugin=False, outgoing=True, command="ping",
+@listener(is_plugin=False, outgoing=True, command=alias_command("pingdc"),
+          description=lang('pingdc_des'))
+async def pingdc(context):
+    """ Ping your or other data center's IP addresses. """
+    data = []
+    for dc in range(1, 6):
+        result = await execute(f"ping -c 1 {DCs[dc]} | awk -F '/' " + "'END {print $5}'")
+        data.append(result)
+    await context.edit(
+        f"{lang('pingdc_1')}: `{data[0]}ms`\n"
+        f"{lang('pingdc_2')}: `{data[1]}ms`\n"
+        f"{lang('pingdc_3')}: `{data[2]}ms`\n"
+        f"{lang('pingdc_4')}: `{data[3]}ms`\n"
+        f"{lang('pingdc_5')}: `{data[4]}ms`"
+    )
+
+
+@listener(is_plugin=False, outgoing=True, command=alias_command("ping"),
           description=lang('ping_des'))
 async def ping(context):
     """ Calculates latency between PagerMaid and Telegram. """
@@ -169,7 +214,7 @@ async def ping(context):
     await context.edit(f"Pong!|{duration}")
 
 
-@listener(is_plugin=False, outgoing=True, command="topcloud",
+@listener(is_plugin=False, outgoing=True, command=alias_command("topcloud"),
           description=lang('topcloud_des'))
 async def topcloud(context):
     """ Generates a word cloud of resource-hungry processes. """

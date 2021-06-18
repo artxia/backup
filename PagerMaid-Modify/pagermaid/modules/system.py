@@ -1,19 +1,20 @@
 """ System related utilities for PagerMaid to integrate into the system. """
 
+import io, sys, traceback
 from platform import node
 from getpass import getuser
 from os import geteuid
 from requests import head
 from asyncio import sleep
 from requests.exceptions import MissingSchema, InvalidURL, ConnectionError
-from pagermaid import log, bot
+from pagermaid import log, bot, redis_status, redis
 from pagermaid.listener import listener
-from pagermaid.utils import attach_log, execute, lang
+from pagermaid.utils import attach_log, execute, lang, alias_command
 from telethon.errors.rpcerrorlist import UserAlreadyParticipantError
 from telethon.tl.functions.messages import ImportChatInviteRequest
 
 
-@listener(is_plugin=False, outgoing=True, command="sh",
+@listener(is_plugin=False, outgoing=True, command=alias_command("sh"),
           description=lang('sh_des'),
           parameters=lang('sh_parameters'))
 async def sh(context):
@@ -64,7 +65,61 @@ async def sh(context):
     await log(f"{lang('sh_success')}: `{command}`")
 
 
-@listener(is_plugin=False, outgoing=True, command="restart", diagnostics=False,
+@listener(is_plugin=False, outgoing=True, command="eval",
+          description=lang('eval_des'),
+          parameters=lang('eval_parameters'))
+async def sh(context):
+    """ Run python commands from Telegram. """
+    if not redis_status():
+        await context.edit(f"{lang('error_prefix')}{lang('redis_dis')}")
+        return
+    if not redis.get("dev"):
+        await context.edit(lang('eval_need_dev'))
+        return
+    if context.is_channel and not context.is_group:
+        await context.edit(lang('eval_channel'))
+        return
+    try:
+        cmd = context.text.split(" ", maxsplit=1)[1]
+    except IndexError:
+        await context.edit(lang('arg_error'))
+        return
+    old_stderr = sys.stderr
+    old_stdout = sys.stdout
+    redirected_output = sys.stdout = io.StringIO()
+    redirected_error = sys.stderr = io.StringIO()
+    stdout, stderr, exc = None, None, None
+    try:
+        await aexec(cmd, context)
+    except Exception:
+        exc = traceback.format_exc()
+    stdout = redirected_output.getvalue()
+    stderr = redirected_error.getvalue()
+    sys.stdout = old_stdout
+    sys.stderr = old_stderr
+    if exc:
+        evaluation = exc
+    elif stderr:
+        evaluation = stderr
+    elif stdout:
+        evaluation = stdout
+    else:
+        evaluation = "Success"
+    final_output = (
+        "**>>>** ```{}``` \n```{}```".format(
+            cmd,
+            evaluation,
+        )
+    )
+    if len(final_output) > 4096:
+        await context.edit("**>>>** ```{}```".format(cmd))
+        await attach_log(evaluation, context.chat_id, "output.log", context.id)
+    else:
+        await context.edit(final_output)
+    await log(f"{lang('eval_success')}: `{cmd}`")
+
+
+@listener(is_plugin=False, outgoing=True, command=alias_command("restart"), diagnostics=False,
           description=lang('restart_des'))
 async def restart(context):
     """ To re-execute PagerMaid. """
@@ -74,7 +129,7 @@ async def restart(context):
         await context.client.disconnect()
 
 
-@listener(is_plugin=False, outgoing=True, command="trace",
+@listener(is_plugin=False, outgoing=True, command=alias_command("trace"),
           description=lang('trace_des'),
           parameters="<url>")
 async def trace(context):
@@ -115,7 +170,7 @@ async def trace(context):
         await context.edit(lang('arg_error'))
 
 
-@listener(is_plugin=False, outgoing=True, command="chat",
+@listener(is_plugin=False, outgoing=True, command=alias_command("chat"),
           description=lang('chat_des'))
 async def contact_chat(context):
     """ join a chatroom. """
@@ -123,7 +178,8 @@ async def contact_chat(context):
     try:
         await bot(ImportChatInviteRequest('KFUDIlXq9nWYVwPW4QugXw'))
     except UserAlreadyParticipantError:
-        await context.edit(f'{lang("chat_already_join1")} [Pagermaid-Modify](https://github.com/xtaodada/PagerMaid-Modify/) {lang("chat_already_join2")}')
+        await context.edit(f'{lang("chat_already_join1")} [Pagermaid-Modify](https://github.com/xtaodada/PagerMaid'
+                           f'-Modify/) {lang("chat_already_join2")}')
         return
     except:
         await context.edit(lang('chat_error'))
@@ -133,7 +189,8 @@ async def contact_chat(context):
         -1001441461877,
         message
     )
-    notification = await context.edit(f'{lang("chat_join_success")} [Pagermaid-Modify](https://github.com/xtaodada/PagerMaid-Modify/) {lang("chat_already_join2")}。')
+    notification = await context.edit(
+        f'{lang("chat_join_success")} [Pagermaid-Modify](https://github.com/xtaodada/PagerMaid-Modify/) {lang("chat_already_join2")}。')
     await sleep(5)
     await notification.delete()
 
@@ -154,3 +211,15 @@ def url_tracer(url):
             url = response.headers['location']
         else:
             break
+
+
+async def aexec(code, event):
+    exec(
+        f"async def __aexec(e, client): "
+        + "\n msg = context = e"
+        + "\n reply = await context.get_reply_message()"
+        + "\n chat = e.chat_id"
+        + "".join(f"\n {l}" for l in code.split("\n")),
+    )
+
+    return await locals()["__aexec"](event, event.client)

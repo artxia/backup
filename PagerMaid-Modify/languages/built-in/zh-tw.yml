@@ -73,12 +73,18 @@ profile_no: 否
 profile_name: 用戶介紹
 profile_username: 用戶名
 profile_fname: 名字
-pfofile_lname: 姓氏
+profile_lname: 姓氏
 profile_bio: 用戶介紹
 profile_gic: 共同的群組
 profile_verified: 官方認證
 profile_restricted: 受到限制
 profile_type: 類型
+# block
+block_des: 拉黑一個用戶
+block_process: 正在拉黑中 . . .
+block_success: 成功拉黑
+block_exist: 已存在黑名單中。
+
 # avoid
 # ghost
 ghost_des: 開啟對話的自動已讀，需要Redis
@@ -217,6 +223,13 @@ lang_change_to: 語言已切換到
 lang_reboot: 正在重新啟動。
 lang_current_lang: 目前語言是
 lang_all_lang: 所有語言有這些：
+# alias
+alias_des: 重定向原始命令。
+alias_list: 以下是重定向命令列表：
+alias_no: 您還沒有重定向任何原始命令。
+alias_success: 編輯重定向命令成功，PagerMaid-Modify 正在重新啟動。
+alias_exist: 出錯了嗚嗚嗚 ~ 重定向指向的命令已被佔用。
+alias_no_exist: 出錯了嗚嗚嗚 ~ 原始命令沒有被重定向。
 # message
 # id
 id_des: 獲取一條訊息的所有資訊。
@@ -361,6 +374,13 @@ connection_hint: 連接資訊
 connection_country: 地區
 connection_dc: 連到的DC
 connection_nearest_dc: 最近的DC
+# pingdc
+pingdc_des: 計算伺服器Delays
+pingdc_1: DC1(美國-邁阿密)
+pingdc_2: DC2(荷蘭-阿姆斯特丹)
+pingdc_3: DC3(美國-邁阿密)
+pingdc_4: DC4(荷蘭-阿姆斯特丹)
+pingdc_5: DC5(新加坡)
 # ping
 ping_des: 計算伺服器Delay
 # topcloud
@@ -400,10 +420,18 @@ merge_total_processed_right: 】張貼紙。
 
 # system
 # sh
-sh_des: 執行Shell指令
+sh_des: 執行 Shell 指令
 sh_parameters: <指令>
 sh_channel: Error！不能在頻道執行指令。
 sh_success: 執行Shell指令
+# eval
+eval_des: 執行 Python 指令
+eval_parameters: <指令>
+eval_channel: Error！不能在頻道執行指令。
+eval_success: 執行 Python 指令
+eval_need_dev: '**請注意：此命令可以直接操作您的賬戶**
+
+此命令僅適用於開發者，如果您知道您在做什麼的話，請手動在 Redis 數據庫配置 dev 項為任意值。'
 # restart
 restart_des: 重新啟動
 restart_processing: 嘗試重新啟動

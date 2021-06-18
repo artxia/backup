@@ -3,17 +3,16 @@
 import platform
 from subprocess import run, PIPE
 from datetime import datetime
-from time import strftime
 from os import remove
 from os.path import exists
 from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 from pagermaid import log
 from pagermaid.listener import listener
-from pagermaid.utils import execute, lang
+from pagermaid.utils import execute, lang, alias_command
 
 
-@listener(is_plugin=False, outgoing=True, command="update",
+@listener(is_plugin=False, outgoing=True, command=alias_command("update"),
           description=lang('update_des'),
           parameters="<true/debug>")
 async def update(context):
@@ -22,6 +21,7 @@ async def update(context):
         return
     await context.edit(lang('update_processing'))
     parameter = None
+    changelog = None
     if len(context.parameter) == 1:
         parameter = context.parameter[0]
     repo_url = 'https://github.com/Xtao-Labs/PagerMaid-Modify.git'
@@ -29,7 +29,8 @@ async def update(context):
     if parameter:
         if parameter == "debug":
             # Version info
-            git_version = run("git --version", stdout=PIPE, shell=True).stdout.decode().strip().replace("git version ", "")
+            git_version = run("git --version", stdout=PIPE, shell=True).stdout.decode().strip().replace("git version ",
+                                                                                                        "")
             git_change = bool(run("git diff-index HEAD --", stdout=PIPE, shell=True).stdout.decode().strip())
             git_change = "是" if git_change else "否"
             git_date = run("git log -1 --format='%at'", stdout=PIPE, shell=True).stdout.decode()
@@ -90,10 +91,10 @@ async def update(context):
                 pass
         await context.edit(lang('update_auto_upgrade_git_hint'))
 
-
     if not parameter:
         if not changelog:
-            await context.edit(f"`PagerMaid-Modify {lang('update_in_branch')} ` **{active_branch}**` {lang('update_is_updated')}`")
+            await context.edit(
+                f"`PagerMaid-Modify {lang('update_in_branch')} ` **{active_branch}**` {lang('update_is_updated')}`")
             return
         changelog_str = f'**{lang("update_found_update_in_branch")} {active_branch}.\n\n{lang("update_change_log")}:**\n`{changelog}`'
         if len(changelog_str) > 4096:
@@ -111,16 +112,17 @@ async def update(context):
             await context.edit(changelog_str + f"\n**{lang('update_hint')}**\n`-update true`")
         return
 
-
     await context.edit(lang('update_found_pulling'))
 
     try:
         try:
             upstream_remote.pull(active_branch)
         except:
-            await execute("""git status | grep modified | sed -r "s/ +/ /" | cut -f2 | awk -F " " '{print "mkdir -p $(dirname ../for-update/" $2 ") && mv " $2 " ../for-update/" $2}' | sh""")
+            await execute("""git status | grep modified | sed -r "s/ +/ /" | cut -f2 | awk -F " " '{print "mkdir -p 
+            $(dirname ../for-update/" $2 ") && mv " $2 " ../for-update/" $2}' | sh""")
             await execute("git pull")
-            await execute("""cd ../for-update/ && find -H . -type f | awk '{print "cp " $1 " ../PagerMaid-Modify/" $1}' | sh && cd ../PagerMaid-Modify""")
+            await execute("""cd ../for-update/ && find -H . -type f | awk '{print "cp " $1 " ../PagerMaid-Modify/" 
+            $1}' | sh && cd ../PagerMaid-Modify""")
             await execute("rm -rf ../for-update/")
         if not exists('install.lock'):
             await execute("python3 -m pip install -r requirements.txt --upgrade")

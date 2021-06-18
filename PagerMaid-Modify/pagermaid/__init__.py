@@ -10,6 +10,7 @@ from os import getcwd, makedirs
 from os.path import exists
 from sys import version_info, platform
 from yaml import load, FullLoader, safe_load
+from json import load as load_json
 from shutil import copyfile
 from redis import StrictRedis
 from logging import getLogger, INFO, DEBUG, ERROR, StreamHandler, basicConfig
@@ -17,6 +18,7 @@ from distutils2.util import strtobool
 from coloredlogs import ColoredFormatter
 from telethon import TelegramClient
 from telethon.errors.rpcerrorlist import MessageNotModifiedError, MessageIdInvalidError
+from sqlite3 import OperationalError
 
 persistent_vars = {}
 module_dir = __path__[0]
@@ -51,16 +53,30 @@ except Exception as e:
     print(e)
     exit(1)
 
+
+# alias
+alias_dict: dict = {}
+
+if exists("data/alias.json"):
+    try:
+        with open("data/alias.json", encoding="utf-8") as f:
+            alias_dict = load_json(f)
+    except Exception as e:
+        print("Reading alias file failed")
+        print(e)
+        exit(1)
+
+
 def lang(text: str) -> str:
     """ i18n """
     result = lang_dict.get(text, text)
     return result
 
+
 if strtobool(config['debug']):
     logs.setLevel(DEBUG)
 else:
     logs.setLevel(INFO)
-
 
 if platform == "linux" or platform == "linux2" or platform == "darwin" or platform == "freebsd7" \
         or platform == "freebsd8" or platform == "freebsdN" or platform == "openbsd6":
@@ -119,9 +135,11 @@ if not proxy_addr == '' and not proxy_port == '':
         import socks
     except:
         pass
-    bot = TelegramClient("pagermaid", api_key, api_hash, auto_reconnect=True, proxy=(socks.SOCKS5, proxy_addr, int(proxy_port)))
+    bot = TelegramClient("pagermaid", api_key, api_hash, auto_reconnect=True,
+                         proxy=(socks.SOCKS5, proxy_addr, int(proxy_port)))
 elif not mtp_addr == '' and not mtp_port == '' and not mtp_secret == '':
     from telethon import connection
+
     bot = TelegramClient("pagermaid", api_key, api_hash, auto_reconnect=True,
                          connection=connection.ConnectionTcpMTProxyRandomizedIntermediate,
                          proxy=(mtp_addr, int(mtp_port), mtp_secret))
@@ -154,6 +172,8 @@ def before_send(event, hint):
         return None
     elif exc_info and isinstance(exc_info[0], MessageIdInvalidError):
         return None
+    elif exc_info and isinstance(exc_info[0], OperationalError):
+        return None
     if time() <= report_time + 30:
         report_time = time()
         return None
@@ -165,7 +185,7 @@ def before_send(event, hint):
 report_time = time()
 git_hash = run("git rev-parse HEAD", stdout=PIPE, shell=True).stdout.decode()
 sentry_sdk.init(
-    "https://e0db801a51f9485e85cb990e0ff34e81@o416616.ingest.sentry.io/5312335",
+    "https://26b73b1d975042e597bf0c9eab3913e8@o416616.ingest.sentry.io/5312335",
     traces_sample_rate=1.0,
     release=git_hash,
     before_send=before_send,
