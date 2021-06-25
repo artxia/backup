@@ -4,6 +4,12 @@ import sentry_sdk
 
 from sentry_sdk.integrations.redis import RedisIntegration
 from concurrent.futures import CancelledError
+python36 = True
+try:
+    from asyncio.exceptions import CancelledError as CancelError
+    python36 = False
+except:
+    pass
 from subprocess import run, PIPE
 from time import time
 from os import getcwd, makedirs
@@ -17,8 +23,15 @@ from logging import getLogger, INFO, DEBUG, ERROR, StreamHandler, basicConfig
 from distutils2.util import strtobool
 from coloredlogs import ColoredFormatter
 from telethon import TelegramClient
-from telethon.errors.rpcerrorlist import MessageNotModifiedError, MessageIdInvalidError
+from telethon.errors.rpcerrorlist import MessageNotModifiedError, MessageIdInvalidError, ChannelPrivateError, \
+    ChatSendMediaForbiddenError, YouBlockedUserError, FloodWaitError, ChatWriteForbiddenError
+from telethon.errors.common import AlreadyInConversationError
+from requests.exceptions import ChunkedEncodingError
+from requests.exceptions import ConnectionError as ConnectedError
 from sqlite3 import OperationalError
+from http.client import RemoteDisconnected
+from urllib.error import URLError
+from concurrent.futures._base import TimeoutError
 
 persistent_vars = {}
 module_dir = __path__[0]
@@ -103,12 +116,16 @@ api_hash = config['api_hash']
 try:
     proxy_addr = config['proxy_addr'].strip()
     proxy_port = config['proxy_port'].strip()
+    http_addr = config['http_addr'].strip()
+    http_port = config['http_port'].strip()
     mtp_addr = config['mtp_addr'].strip()
     mtp_port = config['mtp_port'].strip()
     mtp_secret = config['mtp_secret'].strip()
 except:
     proxy_addr = ''
     proxy_port = ''
+    http_addr = ''
+    http_port = ''
     mtp_addr = ''
     mtp_port = ''
     mtp_secret = ''
@@ -132,11 +149,20 @@ if api_key is None or api_hash is None:
 
 if not proxy_addr == '' and not proxy_port == '':
     try:
-        import socks
+        import python_socks
+
+        bot = TelegramClient("pagermaid", api_key, api_hash, auto_reconnect=True,
+                             proxy=(python_socks.ProxyType.SOCKS5, proxy_addr, int(proxy_port)))
     except:
-        pass
-    bot = TelegramClient("pagermaid", api_key, api_hash, auto_reconnect=True,
-                         proxy=(socks.SOCKS5, proxy_addr, int(proxy_port)))
+        bot = TelegramClient("pagermaid", api_key, api_hash, auto_reconnect=True)
+elif not http_addr == '' and not http_port == '':
+    try:
+        import python_socks
+
+        bot = TelegramClient("pagermaid", api_key, api_hash, auto_reconnect=True,
+                             proxy=(python_socks.ProxyType.HTTP, http_addr, int(http_port)))
+    except:
+        bot = TelegramClient("pagermaid", api_key, api_hash, auto_reconnect=True)
 elif not mtp_addr == '' and not mtp_port == '' and not mtp_secret == '':
     from telethon import connection
 
@@ -164,16 +190,49 @@ with bot:
 def before_send(event, hint):
     global report_time
     exc_info = hint.get("exc_info")
-    if exc_info and isinstance(exc_info[0], ConnectionError):
+    if exc_info and isinstance(exc_info[1], ConnectionError):
         return None
-    elif exc_info and isinstance(exc_info[0], CancelledError):
+    elif exc_info and isinstance(exc_info[1], CancelledError):
         return None
-    elif exc_info and isinstance(exc_info[0], MessageNotModifiedError):
+    elif exc_info and isinstance(exc_info[1], MessageNotModifiedError):
         return None
-    elif exc_info and isinstance(exc_info[0], MessageIdInvalidError):
+    elif exc_info and isinstance(exc_info[1], MessageIdInvalidError):
         return None
-    elif exc_info and isinstance(exc_info[0], OperationalError):
+    elif exc_info and isinstance(exc_info[1], OperationalError):
         return None
+    elif exc_info and isinstance(exc_info[1], ChannelPrivateError):
+        return None
+    elif exc_info and isinstance(exc_info[1], BufferError):
+        return None
+    elif exc_info and isinstance(exc_info[1], RemoteDisconnected):
+        return None
+    elif exc_info and isinstance(exc_info[1], ChatSendMediaForbiddenError):
+        return None
+    elif exc_info and isinstance(exc_info[1], TypeError):
+        return None
+    elif exc_info and isinstance(exc_info[1], URLError):
+        return None
+    elif exc_info and isinstance(exc_info[1], YouBlockedUserError):
+        return None
+    elif exc_info and isinstance(exc_info[1], FloodWaitError):
+        return None
+    elif exc_info and isinstance(exc_info[1], ChunkedEncodingError):
+        return None
+    elif exc_info and isinstance(exc_info[1], TimeoutError):
+        return None
+    elif exc_info and isinstance(exc_info[1], UnicodeEncodeError):
+        return None
+    elif exc_info and isinstance(exc_info[1], ChatWriteForbiddenError):
+        return None
+    elif exc_info and isinstance(exc_info[1], AlreadyInConversationError):
+        return None
+    elif exc_info and isinstance(exc_info[1], ConnectedError):
+        return None
+    elif exc_info and isinstance(exc_info[1], KeyboardInterrupt):
+        return None
+    if not python36:
+        if exc_info and isinstance(exc_info[1], CancelError):
+            return None
     if time() <= report_time + 30:
         report_time = time()
         return None
@@ -185,7 +244,7 @@ def before_send(event, hint):
 report_time = time()
 git_hash = run("git rev-parse HEAD", stdout=PIPE, shell=True).stdout.decode()
 sentry_sdk.init(
-    "https://26b73b1d975042e597bf0c9eab3913e8@o416616.ingest.sentry.io/5312335",
+    "https://86690706c3f94854ae105fffb74362ae@o416616.ingest.sentry.io/5312335",
     traces_sample_rate=1.0,
     release=git_hash,
     before_send=before_send,
