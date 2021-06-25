@@ -4,20 +4,12 @@ import { UpstreamOptions, OptimizationOptions } from './types';
 const cloneRequest = (
   url: string,
   request: Request,
-  upstream: UpstreamOptions,
   optimization?: OptimizationOptions,
 ): Request => {
-  const cloneHeaders = new Headers(request.headers);
-  if (upstream.headers !== undefined) {
-    for (const [name, value] of Object.entries(upstream.headers)) {
-      cloneHeaders.set(name, value);
-    }
-  }
-
   const requestInit: CfRequestInit = {
     body: request.body,
     method: request.method,
-    headers: cloneHeaders,
+    headers: request.headers,
     redirect: 'follow',
   };
 
@@ -82,7 +74,6 @@ export const getUpstreamResponse = async (
   const upstreamRequest = cloneRequest(
     url,
     request,
-    upstream,
     optimization,
   );
 

@@ -6,9 +6,6 @@ export interface UpstreamOptions {
   port?: number;
   path?: string;
   timeout?: number;
-  headers?: {
-    [key: string]: string;
-  };
   retry?: number;
   weight?: number;
 }
@@ -43,7 +40,7 @@ export interface ErrorOptions {
 
 export interface CORSOptions {
   /**
-   * Configures the **Access-Control-Allow-Origin** CORS header. Possible values:
+   * Configures the `Access-Control-Allow-Origin` CORS header. Possible values:
    * - boolean - set to `true` to reflect the request origin,
    * or set to `false` to disable CORS.
    * - string[] - an array of acceptable origins.
@@ -55,46 +52,88 @@ export interface CORSOptions {
    * Configures the `Access-Control-Allow-Methods` CORS header.
    * Expects an array of valid HTTP methods or `*`.
    * If not specified, defaults to reflecting the method specified
-   * in the request’s **Access-Control-Request-Method** header.
+   * in the request’s `Access-Control-Request-Method` header.
    */
   methods?: HTTPMethod[] | '*';
 
   /**
-   * Configures the **Access-Control-Expose-Headers** CORS header.
+   * Configures the `Access-Control-Expose-Headers` CORS header.
    * Expects an array of HTTP headers or `*`.
    * If not specified, no custom headers are exposed.
    */
   exposedHeaders?: string[] | '*';
 
   /**
-   * Configures the **Access-Control-Allow-Headers** CORS header.
+   * Configures the `Access-Control-Allow-Headers` CORS header.
    * Expects an array of HTTP headers or `*`.
    * If not specified, defaults to reflecting the headers specified
-   * in the request’s **Access-Control-Request-Headers** header.
+   * in the request’s `Access-Control-Request-Headers` header.
    */
   allowedHeaders?: string[] | '*';
 
   /**
-   * Configures the **Access-Control-Allow-Credentials** CORS header.
+   * Configures the `Access-Control-Allow-Credentials` CORS header.
    * Set to `true` to pass the header, otherwise it is omitted.
    */
   credentials?: boolean;
 
   /**
-   * Configures the **Access-Control-Max-Age** CORS header.
+   * Configures the `Access-Control-Max-Age` CORS header.
    * Set to an integer to pass the header, otherwise it is omitted.
    */
   maxAge?: number;
 }
 
-export type LoadBalancingMethod = 'round-robin' | 'ip-hash' | 'random';
-export interface NetworkOptions {
-  loadBalancingMethod?: LoadBalancingMethod;
-  websocket?: boolean;
+export interface LoadBalancingOptions {
+  method?: 'round-robin' | 'ip-hash' | 'random';
 }
 
-export interface CacheOptions {
-  cacheEverything?: boolean;
+export interface HeaderOptions {
+  /**
+   * Sets request header going upstream to the backend.
+   */
+  request?: {
+    [key: string]: string;
+  };
+
+  /**
+   * Sets response header coming downstream to the client.
+   */
+  response?: {
+    [key: string]: string;
+  };
+}
+
+export interface SecurityOptions {
+  /**
+   * Sets the `X-Forwarded-For`, `X-Forwarded-Host`, and `X-Forwarded-Proto` headers.
+   */
+   forwarded?: boolean;
+
+  /**
+   * Removes the `X-Powered-By` header, which is set by default
+   * in some frameworks such as Express.
+   */
+   hidePoweredBy?: boolean;
+
+   /**
+    * Sets the `X-Download-Options` header, which is specific to Internet Explorer 8.
+    * It forces potentially-unsafe downloads to be saved, mitigating execution of HTML
+    * in your site's context.
+    */
+   ieNoOpen?: boolean;
+
+   /**
+    * Sets the `X-XSS-Protection` header to `0`
+    * to disable browsers' buggy cross-site scripting filter.
+    */
+   xssFilter?: boolean;
+
+   /**
+    * Sets the `X-Content-Type-Options` header to `nosniff`.
+    * This mitigates MIME type sniffing which can cause security vulnerabilities.
+    */
+   noSniff?: boolean;
 }
 
 export interface OptimizationOptions {
@@ -111,7 +150,8 @@ export interface Configuration {
   firewall?: FirewallOptions | FirewallOptions[];
   error?: ErrorOptions | ErrorOptions[];
   cors?: CORSOptions;
-  network?: NetworkOptions;
-  cache?: CacheOptions;
   optimization?: OptimizationOptions;
+  loadBalancing?: LoadBalancingOptions;
+  header?: HeaderOptions;
+  security?: SecurityOptions;
 }

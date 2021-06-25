@@ -1,6 +1,7 @@
 const path = require('path');
 const ESLintPlugin = require('eslint-webpack-plugin');
 const { CleanWebpackPlugin } = require('clean-webpack-plugin');
+const { ProgressPlugin } = require('webpack');
 
 module.exports = {
   mode: process.env.NODE_ENV || 'production',
@@ -21,9 +22,11 @@ module.exports = {
     ],
   },
   plugins: [
+    new ProgressPlugin(),
     new CleanWebpackPlugin(),
     new ESLintPlugin({
       extensions: ['ts'],
+      cache: true,
     }),
   ],
   module: {
