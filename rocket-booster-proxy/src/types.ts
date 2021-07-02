@@ -134,6 +134,11 @@ export interface SecurityOptions {
     * This mitigates MIME type sniffing which can cause security vulnerabilities.
     */
    noSniff?: boolean;
+
+   /**
+    * Sets the `Domain` attribute of the `Set-Cookie` header to the domain of the worker.
+    */
+   setCookie?: boolean;
 }
 
 export interface OptimizationOptions {
@@ -154,4 +159,8 @@ export interface Configuration {
   loadBalancing?: LoadBalancingOptions;
   header?: HeaderOptions;
   security?: SecurityOptions;
+}
+
+export interface Proxy {
+ apply: (request: Request) => Promise<Response>
 }

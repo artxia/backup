@@ -17,10 +17,10 @@ test('headers.ts -> setForwardedHeaders()', () => {
     },
   );
 
-  setForwardedHeaders(request);
+  setForwardedHeaders(request.headers);
   expect(request.headers.get('X-Forwarded-Proto')).toEqual('https');
   expect(request.headers.get('X-Forwarded-Host')).toEqual('https://httpbin.org');
-  expect(request.headers.get('X-Forwarded-For')).toEqual('127.0.0.1, 127.0.0.2, 1.1.1.1');
+  expect(request.headers.get('X-Forwarded-For')).toEqual('127.0.0.1, 127.0.0.2');
 });
 
 test('headers.ts -> setRequestHeaders()', () => {
@@ -34,15 +34,15 @@ test('headers.ts -> setRequestHeaders()', () => {
     },
   );
 
-  setRequestHeaders(request, {
+  const headersRequest = setRequestHeaders(request, {
     request: {
       'X-Test': 'Test header',
       'X-Forwarded-For': 'Test override',
     },
   });
 
-  expect(request.headers.get('X-Test')).toEqual('Test header');
-  expect(request.headers.get('X-Forwarded-For')).toEqual('Test override');
+  expect(headersRequest.headers.get('X-Test')).toEqual('Test header');
+  expect(headersRequest.headers.get('X-Forwarded-For')).toEqual('Test override');
 });
 
 test('headers.ts -> setResponseHeaders()', () => {
@@ -51,12 +51,15 @@ test('headers.ts -> setResponseHeaders()', () => {
     {
       headers: new Headers({
         'X-Powered-By': 'Express',
+        'X-PJAX-URL': 'https://test.com/pjax',
+        'Set-Cookie': 'cookie_1=test; domain=<domain-value>; secure; samesite=strict; cookie_2=test; domain=<domain-value>; secure; httpOnly;',
       }),
     },
   );
 
   const headersResponse = setResponseHeaders(
     response,
+    'httpbin.org',
     {
       response: {
         'X-Test': 'Test header',
@@ -67,12 +70,17 @@ test('headers.ts -> setResponseHeaders()', () => {
       xssFilter: true,
       hidePoweredBy: true,
       ieNoOpen: true,
+      setCookie: true,
     },
   );
 
   expect(headersResponse.headers.has('X-Powered-By')).toEqual(false);
   expect(headersResponse.headers.get('X-Test')).toEqual('Test header');
-  expect(headersResponse.headers.get('X-XSS-Protectio')).toEqual('0');
+  expect(headersResponse.headers.get('X-XSS-Protection')).toEqual('0');
   expect(headersResponse.headers.get('X-Content-Type-Options')).toEqual('nosniff');
   expect(headersResponse.headers.get('X-Download-Options')).toEqual('noopen');
+  expect(headersResponse.headers.get('X-PJAX-URL')).toEqual('https://httpbin.org/pjax');
+
+  const cookie = 'cookie_1=test;domain=httpbin.org;secure;samesite=strict;cookie_2=test;domain=httpbin.org;secure;httpOnly;';
+  expect(headersResponse.headers.get('Set-Cookie')).toEqual(cookie);
 });

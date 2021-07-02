@@ -4,19 +4,18 @@ import { setRequestHeaders, setResponseHeaders } from './headers';
 import { getUpstreamResponse } from './upstream';
 import { getCORSResponse } from './cors';
 import { getErrorResponse } from './error';
-import { Configuration } from './types';
+import { getHostname } from './utils';
+import { Proxy, Configuration } from './types';
 
-class RocketBooster {
-  config: Configuration;
+export default function useProxy(
+  config: Configuration,
+): Proxy {
+  const apply = async (request: Request): Promise<Response> => {
+    const hostname = getHostname(request);
 
-  constructor(config: Configuration) {
-    this.config = config;
-  }
-
-  async apply(request: Request): Promise<Response> {
     const firewallResponse = getFirewallResponse(
       request,
-      this.config.firewall,
+      config.firewall,
     );
     if (firewallResponse !== null) {
       return firewallResponse;
@@ -24,18 +23,18 @@ class RocketBooster {
 
     const headersRequest = setRequestHeaders(
       request,
-      this.config.header,
-      this.config.security,
+      config.header,
+      config.security,
     );
 
     const upstream = selectUpstream(
-      this.config.upstream,
-      this.config.loadBalancing,
+      config.upstream,
+      config.loadBalancing,
     );
     const upstreamResponse = await getUpstreamResponse(
       headersRequest,
       upstream,
-      this.config.optimization,
+      config.optimization,
     );
 
     if (
@@ -48,21 +47,25 @@ class RocketBooster {
     const errorResponse = await getErrorResponse(
       upstreamResponse,
       upstream,
-      this.config.error,
+      config.error,
     );
 
     const corsResponse = getCORSResponse(
       request,
       errorResponse,
-      this.config.cors,
+      config.cors,
     );
 
     const headersResponse = setResponseHeaders(
       corsResponse,
-      this.config.header,
+      hostname,
+      config.header,
+      config.security,
     );
     return headersResponse;
-  }
-}
+  };
 
-export default RocketBooster;
+  return {
+    apply,
+  };
+}
