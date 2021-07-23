@@ -3,9 +3,9 @@ import { Button, Collapse, InputAdornment, TextField } from "@material-ui/core";
 import code from "./code";
 import "./styles.css";
 
-const DEFAULT_DOMAIN = "example.org";
+const DEFAULT_DOMAIN = "fruitionsite.com";
 const DEFAULT_NOTION_URL =
-  "https://www.notion.so/Fruition-771ef38657244c27b9389734a9cbff44";
+  "https://stephenou.notion.site/771ef38657244c27b9389734a9cbff44";
 
 function validDomain(domain) {
   return domain.match(
@@ -18,7 +18,7 @@ function validNotionUrl(url) {
   try {
     const link = new URL(url);
     return (
-      link.hostname.endsWith("notion.so") &&
+      (link.hostname.endsWith("notion.so") || link.hostname.endsWith("notion.site")) &&
       link.pathname.slice(-32).match(/[0-9a-f]{32}/)
     );
   } catch (e) {
