@@ -1,12 +1,15 @@
 """ PagerMaid initialization. """
 
-import sentry_sdk
-
-from sentry_sdk.integrations.redis import RedisIntegration
 from concurrent.futures import CancelledError
+
+# Analytics
+import sentry_sdk
+from sentry_sdk.integrations.redis import RedisIntegration
+
 python36 = True
 try:
     from asyncio.exceptions import CancelledError as CancelError
+
     python36 = False
 except:
     pass
@@ -24,7 +27,8 @@ from distutils2.util import strtobool
 from coloredlogs import ColoredFormatter
 from telethon import TelegramClient
 from telethon.errors.rpcerrorlist import MessageNotModifiedError, MessageIdInvalidError, ChannelPrivateError, \
-    ChatSendMediaForbiddenError, YouBlockedUserError, FloodWaitError, ChatWriteForbiddenError
+    ChatSendMediaForbiddenError, YouBlockedUserError, FloodWaitError, ChatWriteForbiddenError, \
+    AuthKeyDuplicatedError
 from telethon.errors.common import AlreadyInConversationError
 from requests.exceptions import ChunkedEncodingError
 from requests.exceptions import ConnectionError as ConnectedError
@@ -66,7 +70,6 @@ except Exception as e:
     print(e)
     exit(1)
 
-
 # alias
 alias_dict: dict = {}
 
@@ -86,6 +89,17 @@ def lang(text: str) -> str:
     return result
 
 
+analytics = None
+try:
+    allow_analytics = strtobool(config['allow_analytic'])
+except KeyError:
+    allow_analytics = True
+except ValueError:
+    allow_analytics = True
+if allow_analytics:
+    import analytics
+    analytics.write_key = 'EI5EyxFl8huwAvv932Au7XoRSdZ63wC4'
+    analytics = analytics
 if strtobool(config['debug']):
     logs.setLevel(DEBUG)
 else:
@@ -188,16 +202,28 @@ elif not mtp_addr == '' and not mtp_port == '' and not mtp_secret == '':
                          use_ipv6=use_ipv6)
 else:
     bot = TelegramClient("pagermaid", api_key, api_hash, auto_reconnect=True, use_ipv6=use_ipv6)
+user_id = 0
 redis = StrictRedis(host=redis_host, port=redis_port, db=redis_db)
 
 
 async def save_id():
+    global user_id
     me = await bot.get_me()
+    user_id = me.id
     if me.username is not None:
-        sentry_sdk.set_user({"id": me.id, "name": me.first_name, "username": me.username, "ip_address": "{{auto}}"})
+        sentry_sdk.set_user({"id": user_id, "name": me.first_name, "username": me.username, "ip_address": "{{auto}}"})
+        if allow_analytics:
+            analytics.identify(user_id, {
+                'name': me.first_name,
+                'username': me.username
+            })
     else:
-        sentry_sdk.set_user({"id": me.id, "name": me.first_name, "ip_address": "{{auto}}"})
-    logs.info(f"{lang('save_id')} {me.first_name}({me.id})")
+        sentry_sdk.set_user({"id": user_id, "name": me.first_name, "ip_address": "{{auto}}"})
+        if allow_analytics:
+            analytics.identify(user_id, {
+                'name': me.first_name
+            })
+    logs.info(f"{lang('save_id')} {me.first_name}({user_id})")
 
 
 with bot:
@@ -248,6 +274,8 @@ def before_send(event, hint):
     elif exc_info and isinstance(exc_info[1], KeyboardInterrupt):
         return None
     elif exc_info and isinstance(exc_info[1], OSError):
+        return None
+    elif exc_info and isinstance(exc_info[1], AuthKeyDuplicatedError):
         return None
     if not python36:
         if exc_info and isinstance(exc_info[1], CancelError):

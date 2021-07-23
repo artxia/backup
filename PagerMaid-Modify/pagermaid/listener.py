@@ -8,8 +8,15 @@ from distutils2.util import strtobool
 from traceback import format_exc
 from time import gmtime, strftime, time
 from telethon.events import StopPropagation
-from pagermaid import bot, config, help_messages, logs
-from pagermaid.utils import attach_report, lang
+from pagermaid import bot, config, help_messages, logs, user_id, analytics
+from pagermaid.utils import attach_report, lang, alias_command
+
+try:
+    allow_analytics = strtobool(config['allow_analytic'])
+except KeyError:
+    allow_analytics = True
+except ValueError:
+    allow_analytics = True
 
 
 def noop(*args, **kw):
@@ -50,6 +57,7 @@ def listener(**args):
 
         async def handler(context):
             try:
+                analytic = True
                 try:
                     parameter = context.pattern_match.group(1).split(' ')
                     if parameter == ['']:
@@ -57,9 +65,26 @@ def listener(**args):
                     context.parameter = parameter
                     context.arguments = context.pattern_match.group(1)
                 except BaseException:
+                    analytic = False
                     context.parameter = None
                     context.arguments = None
                 await function(context)
+                if analytic and allow_analytics:
+                    try:
+                        upload_command = context.text.split()[0].replace('-', '')
+                        upload_command = alias_command(upload_command)
+                        if context.sender_id:
+                            if context.sender_id > 0:
+                                analytics.track(context.sender_id, f'Function {upload_command}',
+                                                {'command': upload_command})
+                            else:
+                                analytics.track(user_id, f'Function {upload_command}',
+                                                {'command': upload_command})
+                        else:
+                            analytics.track(user_id, f'Function {upload_command}',
+                                            {'command': upload_command})
+                    except Exception as e:
+                        logs.info(f"Analytics Error ~ {e}")
             except StopPropagation:
                 raise StopPropagation
             except MessageTooLongError:
@@ -85,8 +110,10 @@ def listener(**args):
                     await attach_report(report, f"exception.{time()}.pagermaid", None,
                                         "Error report generated.")
                     try:
-                        sentry_sdk.set_context("Target", {"ChatID": str(context.chat_id), "UserID": str(context.sender_id), "Msg": context.text})
-                        sentry_sdk.set_tag('com', re.findall("\w+",str.lower(context.text.split()[0]))[0])
+                        sentry_sdk.set_context("Target",
+                                               {"ChatID": str(context.chat_id), "UserID": str(context.sender_id),
+                                                "Msg": context.text})
+                        sentry_sdk.set_tag('com', re.findall("\w+", str.lower(context.text.split()[0]))[0])
                         sentry_sdk.capture_exception(e)
                     except:
                         logs.info(

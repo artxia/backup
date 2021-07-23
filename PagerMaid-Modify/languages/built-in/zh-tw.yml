@@ -138,7 +138,7 @@ ocr_des: 從回覆的圖片中提取文字
 ocr_psm_len_error: Error！psm取值為0-13
 ocr_processing: 正在處理圖片，等下…
 ocr_no_file: Error！回覆的訊息沒有附件。
-ocr_no_result: Error！請向作者報告這個問題。
+ocr_no_result: 沒有提取到任何文字。
 ocr_result_hint: 以下是提取到的文字
 # highlight
 highlight_des: 生成有文法Highlight的圖片
@@ -427,6 +427,10 @@ merge_processing_left: 正在處理第【
 merge_processing_right: 】條消息。
 merge_total_processed_left: 共處理了【
 merge_total_processed_right: 】張貼紙。
+## search
+sticker_search_des: 通過關鍵詞查找 Sticker 包。
+sticker_search_no: 沒有找到任何 Sticker 包。
+sticker_search_result: 以下是查找到的 Sticker 包：
 
 # system
 # sh
@@ -484,3 +488,17 @@ update_failed: 更新失敗
 update_auto_upgrade_git_failed_ubuntu: 檢測到您的系統為Ubuntu/Debian，嘗試自動升級Git失敗，請手動。
 update_auto_upgrade_git_failed_cent: 檢測到您的系統為CentOS/RedHat Linux，嘗試自動升級Git失敗，請手動。
 update_auto_upgrade_git_hint: 檢測到您Git版本過低，已嘗試自動升級。若此錯誤持續發生，請手動。
+
+# sb
+sb_des: 在自己擁有管理員權限的共同群組中封禁一位用戶。
+sb_des_auto: 管理自動封禁列表。
+sb_pause: 暫停
+sb_no: 沒有在任何群封禁用戶
+sb_per: 在
+sb_in: 個群封禁了用戶
+sb_pro: 受影響的群組
+sb_no_per: 沒有封禁用戶權限。
+sb_set: 已被添加到自動封禁列表中。
+sb_remove: 已被移除自動封禁列表。
+sb_exist: 此群組存在於自動封禁列表中。
+sb_no_exist: 此群組不存在於自動封禁列表中。
