@@ -1,4 +1,4 @@
-using System.Net.Http;
+﻿using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -20,6 +20,7 @@ namespace Emby.Plugins.Douban
         /// <returns>The subject of one item.</returns>
         public Task<Response.Subject> GetSubject(string doubanID, MediaType type,
             CancellationToken cancellationToken);
+        public Task<Response.SubjectCredits> GetSubjectCredits(string doubanID, MediaType type, CancellationToken cancellationToken);
 
         /// <summary>
         /// Search in Douban by a search query.

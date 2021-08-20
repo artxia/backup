@@ -9,6 +9,8 @@ using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
 using MediaBrowser.Model.Serialization;
 using MediaBrowser.Model.Logging;
+using System;
+
 namespace Emby.Plugins.Douban.Providers
 {
     public class MovieProvider : BaseProvider, IHasOrder,
@@ -81,10 +83,11 @@ namespace Emby.Plugins.Douban.Providers
             foreach (Response.SearchTarget searchTarget in searchResults)
             {
                 _logger.LogCallerInfo("Cover_Url"+searchTarget?.Cover_Url);
+
                 var searchResult = new RemoteSearchResult()
                 {
                     Name = searchTarget?.Title,
-                    ImageUrl = "https://quiet-tooth-fc54.alifelife.workers.dev/?url=" + searchTarget?.Cover_Url,
+                    ImageUrl = GetLocalUrl(searchTarget?.Cover_Url, ImageType.Thumb),
                     ProductionYear = int.Parse(searchTarget?.Year)
                 };
                 searchResult.SetProviderId(ProviderID, searchTarget.Id);
@@ -93,14 +96,24 @@ namespace Emby.Plugins.Douban.Providers
 
             return results;
         }
-
+        private string GetLocalUrl(string url, ImageType type = ImageType.Backdrop)
+        {
+            if (string.IsNullOrEmpty(url))
+                return url;
+            if (url.IndexOf("Plugins/alifeline_douban/Image", StringComparison.OrdinalIgnoreCase) >= 0)
+                return url;
+            return $"/emby/Plugins/alifeline_douban/Image?url={url}&type={type}";
+        }
         Task<HttpResponseInfo> IRemoteSearchProvider.GetImageResponse(string url, CancellationToken cancellationToken)
         {
-            _logger.Info("GetImageResponse url:" + url);
-            var newUrl = url.Replace("https://quiet-tooth-fc54.alifelife.workers.dev/?url=", "");
-            var res= _httpClient.GetResponse(new HttpRequestOptions
+            _logger.Info("Mv GetImageResponse url:" + url);
+            if (url.IndexOf("Plugins/alifeline_douban/Image", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                Url = newUrl,
+                url = url.Replace("/emby/Plugins/alifeline_douban/Image?url=", "");
+            }
+            var res = _httpClient.GetResponse(new HttpRequestOptions
+            {
+                Url = url,
                 CancellationToken = cancellationToken
             });
             return res;
