@@ -108,7 +108,7 @@ async function fetchAndApply(request) {
   } else if (url.pathname.startsWith("/api")) {
     // Forward API
     response = await fetch(url.toString(), {
-      body: request.body,
+      body: url.pathname.startsWith('/api/v3/getPublicPageData') ? null : request.body,
       headers: {
         "content-type": "application/json;charset=UTF-8",
         "user-agent":
@@ -118,9 +118,6 @@ async function fetchAndApply(request) {
     });
     response = new Response(response.body, response);
     response.headers.set("Access-Control-Allow-Origin", "*");
-    if (url.pathname.startsWith('/api/v3/getPublicPageData')) {
-      response.body.delete('requireInterstitial');
-    }
     return response;
   } else if (slugs.indexOf(url.pathname.slice(1)) > -1) {
     const pageId = SLUG_TO_PAGE[url.pathname.slice(1)];
@@ -214,6 +211,7 @@ class BodyRewriter {
   element(element) {
     element.append(
       `<script>
+      window.CONFIG.domainBaseUrl = 'https://${MY_DOMAIN}';
       const SLUG_TO_PAGE = ${JSON.stringify(this.SLUG_TO_PAGE)};
       const PAGE_TO_SLUG = {};
       const slugs = [];
