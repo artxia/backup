@@ -1,8 +1,8 @@
 name: GDAutoAdd Backup
 
 on:
-  schedule:
-    - cron: 0 4 * * 5
+#  schedule:
+#    - cron: 0 4 * * 5
   workflow_dispatch:
     inputs:
 
