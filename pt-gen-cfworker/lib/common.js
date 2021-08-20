@@ -2,7 +2,7 @@ const cheerio = require("cheerio"); // HTML页面解析
 const HTML2BBCode = require("html2bbcode").HTML2BBCode;
 
 // 常量定义
-export const AUTHOR = "Rhilip";
+export const AUTHOR = globalThis['AUTHOR'] ? globalThis['AUTHOR'] : "Rhilip";
 const VERSION = "0.6.3";
 
 /** 公有的JSON字段，其他字段为不同生成模块的信息
@@ -45,18 +45,24 @@ export function html2bbcode(html) {
 }
 
 // 返回Json请求
+export function makeJsonRawResponse(body, headers) {
+  headers = {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*" // CORS
+    },
+    ...(headers || {})
+  }
+  return new Response(JSON.stringify(body || {}, null, 2), headers)
+}
+
 export function makeJsonResponse(body_update) {
-  let body = Object.assign({},
+  const body = Object.assign(
     default_body,
     body_update, {
       generate_at: (new Date()).valueOf()
     }
   );
-  return new Response(JSON.stringify(body, null, 2), {
-    status: 200,
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*" // CORS
-    }
-  });
+  return makeJsonRawResponse(body)
 }
