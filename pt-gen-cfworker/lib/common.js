@@ -44,6 +44,16 @@ export function html2bbcode(html) {
   return bbcode.toString();
 }
 
+export async function restoreFromKV(cache_key) {
+  /* global PT_GEN_STORE */
+  if (globalThis['PT_GEN_STORE']) {
+    const cache_data = await PT_GEN_STORE.get(cache_key)
+    if (cache_data !== null) {
+      return JSON.parse(cache_data)
+    }
+  }
+}
+
 // 返回Json请求
 export function makeJsonRawResponse(body, headers) {
   headers = {
