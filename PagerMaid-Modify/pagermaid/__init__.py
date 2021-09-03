@@ -30,7 +30,7 @@ from telethon import TelegramClient
 # Errors
 from telethon.errors.rpcerrorlist import MessageNotModifiedError, MessageIdInvalidError, ChannelPrivateError, \
     ChatSendMediaForbiddenError, YouBlockedUserError, FloodWaitError, ChatWriteForbiddenError, \
-    AuthKeyDuplicatedError
+    AuthKeyDuplicatedError, ChatSendStickersForbiddenError
 from telethon.errors.common import AlreadyInConversationError
 from requests.exceptions import ChunkedEncodingError
 from requests.exceptions import ConnectionError as ConnectedError
@@ -38,6 +38,7 @@ from sqlite3 import OperationalError
 from http.client import RemoteDisconnected
 from urllib.error import URLError
 from concurrent.futures._base import TimeoutError
+from redis.exceptions import ResponseError
 
 persistent_vars = {}
 module_dir = __path__[0]
@@ -181,15 +182,22 @@ if api_key is None or api_hash is None:
     )
     exit(1)
 
+# 开始检查代理配置
+proxies = {}
 if not proxy_addr == '' and not proxy_port == '':
     try:
         import python_socks
 
+        proxies = {
+            "http": f"socks5://{proxy_addr}:{proxy_port}",
+            "https": f"socks5://{proxy_addr}:{proxy_port}"
+        }
         bot = TelegramClient("pagermaid", api_key, api_hash,
                              auto_reconnect=True,
                              proxy=(python_socks.ProxyType.SOCKS5, proxy_addr, int(proxy_port)),
                              use_ipv6=use_ipv6)
     except:
+        proxies = {}
         bot = TelegramClient("pagermaid", api_key, api_hash,
                              auto_reconnect=True,
                              use_ipv6=use_ipv6)
@@ -197,6 +205,10 @@ elif not http_addr == '' and not http_port == '':
     try:
         import python_socks
 
+        proxies = {
+            "http": f"http://{http_addr}:{http_port}",
+            "https": f"http://{http_addr}:{http_port}"
+        }
         bot = TelegramClient("pagermaid", api_key, api_hash,
                              auto_reconnect=True,
                              proxy=(python_socks.ProxyType.HTTP, http_addr, int(http_port)),
@@ -280,6 +292,8 @@ def before_send(event, hint):
         return None
     elif exc_info and isinstance(exc_info[1], ChatWriteForbiddenError):
         return None
+    elif exc_info and isinstance(exc_info[1], ChatSendStickersForbiddenError):
+        return None
     elif exc_info and isinstance(exc_info[1], AlreadyInConversationError):
         return None
     elif exc_info and isinstance(exc_info[1], ConnectedError):
@@ -289,6 +303,8 @@ def before_send(event, hint):
     elif exc_info and isinstance(exc_info[1], OSError):
         return None
     elif exc_info and isinstance(exc_info[1], AuthKeyDuplicatedError):
+        return None
+    elif exc_info and isinstance(exc_info[1], ResponseError):
         return None
     if not python36:
         if exc_info and isinstance(exc_info[1], CancelError):
