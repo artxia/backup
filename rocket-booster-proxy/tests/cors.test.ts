@@ -1,4 +1,5 @@
 import { useCORS } from '../src/cors';
+import { WorkersKV } from '../src/storage';
 import { Context } from '../types/middleware';
 
 const request = new Request(
@@ -25,6 +26,7 @@ const baseContext: Context = {
   response,
   hostname: 'https://httpbin.org',
   upstream: null,
+  storage: new WorkersKV(),
   options: {
     upstream: {
       domain: 'httpbin.org',

@@ -2,6 +2,7 @@ import {
   setForwardedHeaders,
   useHeaders,
 } from '../src/headers';
+import { WorkersKV } from '../src/storage';
 import { Context } from '../types/middleware';
 
 test('headers.ts -> setForwardedHeaders()', () => {
@@ -37,6 +38,7 @@ test('headers.ts -> useHeaders()', async () => {
     response: new Response(),
     hostname: 'https://httpbin.org',
     upstream: null,
+    storage: new WorkersKV(),
     options: {
       upstream: {
         domain: 'httpbin.org',

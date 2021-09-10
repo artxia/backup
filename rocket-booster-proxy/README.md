@@ -182,6 +182,7 @@ proxy.use('/data/*.json', {
 - `protocol`: The protocol scheme of the upstream server. (optional, defaults to `'https'`)
 - `port`: The port of the upstream server. (optional, defaults to `80` or `443` based on `protocol`)
 - `timeout`: The maximum wait time on a request to the upstream server. (optional, defaults to `10000`)
+- `weight`: The weight of the server that will be accounted as part of the load balancing decision. (optional, defaults to `1`)
 
 ```ts
 proxy.use('/', {
@@ -190,6 +191,7 @@ proxy.use('/', {
     protocol: 'https',
     port: 443,
     timeout: 10000,
+    weight: 1,
   },
   /* ... */
 });
@@ -197,22 +199,31 @@ proxy.use('/', {
 
 ### Load Balancing
 
-To load balance HTTP traffic to a group of servers, pass an array of server configurations to `upstream`. Each request will be forwarded to a randomly selected server. Several load balancing algorithms will be implemented in the future.
+To load balance HTTP traffic to a group of servers, pass an array of server configurations to `upstream`. The load balancer will forward the request to an upstream server based on the `loadBalancing.policy` option.
+
+- `random`: The load balancer will select a random upstream server from the server group. The optional `weight` parameter in the server configuration could influence the load balancing algorithm.
+- `ip-hash`: The client's IP address is used as a hashing key to select the upstream server from the server group. It ensures that the requests from the same client will always be directed to the same server.
 
 ```ts
 proxy.use('/', {
+  loadBalancing: {
+    policy: 'random',
+  },
   upstream: [
     {
       domain: 's1.example.com',
       protocol: 'https',
+      weight: 20,
     },
     {
       domain: 's2.example.com',
       protocol: 'https',
+      weight: 30,
     },
     {
       domain: 's3.example.com',
       protocol: 'https',
+      weight: 50,
     },
   ],
   /* ... */

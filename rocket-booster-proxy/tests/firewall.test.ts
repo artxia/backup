@@ -12,6 +12,7 @@ import {
   matchOperator,
   notMatchOperator,
 } from '../src/firewall';
+import { WorkersKV } from '../src/storage';
 import { Context } from '../types/middleware';
 
 const request = new Request(
@@ -32,6 +33,7 @@ test('firewall.ts -> useFirewall()', async () => {
     response: new Response(),
     hostname: 'https://github.com',
     upstream: null,
+    storage: new WorkersKV(),
     options: {
       upstream: {
         domain: 'httpbin.org',
@@ -47,7 +49,9 @@ test('firewall.ts -> useFirewall()', async () => {
   try {
     await useFirewall(context, () => null);
   } catch (error) {
-    expect(error.message).toMatch('You don\'t have permission to access this service.');
+    if (error instanceof Error) {
+      expect(error.message).toMatch('You don\'t have permission to access this service.');
+    }
   }
 });
 
@@ -72,7 +76,9 @@ test('firewall.ts -> greaterOperator()', () => {
   try {
     greaterOperator('a', '0');
   } catch (error) {
-    expect(error.message).toMatch('You must use number for \'value\' in firewall configuration to use \'greater\' or \'less\' operator');
+    if (error instanceof Error) {
+      expect(error.message).toMatch('You must use number for \'value\' in firewall configuration to use \'greater\' or \'less\' operator');
+    }
   }
 });
 
@@ -81,7 +87,9 @@ test('firewall.ts -> lessOperator()', () => {
   try {
     lessOperator('a', '1');
   } catch (error) {
-    expect(error.message).toMatch('You must use number for \'value\' in firewall configuration to use \'greater\' or \'less\' operator');
+    if (error instanceof Error) {
+      expect(error.message).toMatch('You must use number for \'value\' in firewall configuration to use \'greater\' or \'less\' operator');
+    }
   }
 });
 
@@ -89,9 +97,11 @@ test('firewall.ts -> inOperator()', () => {
   expect(inOperator(0, [0, 1, 2])).toBeTruthy();
   expect(inOperator(0, [1, 2, 3])).toBeFalsy();
   try {
-    inOperator(0, "1, 2, 3");
+    inOperator(0, '1, 2, 3');
   } catch (error) {
-    expect(error.message).toMatch('You must use an Array for \'value\' in firewall configuration to use \'in\' or \'not in\' operator');
+    if (error instanceof Error) {
+      expect(error.message).toMatch('You must use an Array for \'value\' in firewall configuration to use \'in\' or \'not in\' operator');
+    }
   }
 });
 
@@ -106,7 +116,9 @@ test('firewall.ts -> containOperator()', () => {
   try {
     containOperator('test-string1', 1);
   } catch (error) {
-    expect(error.message).toMatch('You must use string for \'value\' in firewall configuration to use \'contain\' or \'not contain\' operator');
+    if (error instanceof Error) {
+      expect(error.message).toMatch('You must use string for \'value\' in firewall configuration to use \'contain\' or \'not contain\' operator');
+    }
   }
 });
 
@@ -121,7 +133,9 @@ test('firewall.ts -> matchOperator()', () => {
   try {
     containOperator('test-string1', 'test-string1');
   } catch (error) {
-    expect(error.message).toMatch('You must use \'new RegExp(\'...\')\' for \'value\' in firewall configuration to use \'match\' or \'not match\' operator');
+    if (error instanceof Error) {
+      expect(error.message).toMatch('You must use \'new RegExp(\'...\')\' for \'value\' in firewall configuration to use \'match\' or \'not match\' operator');
+    }
   }
 });
 

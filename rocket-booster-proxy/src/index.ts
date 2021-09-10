@@ -5,6 +5,7 @@ import { useUpstream } from './upstream';
 import { useCORS } from './cors';
 import { useRewrite } from './rewrite';
 
+import { WorkersKV } from './storage';
 import { createResponse, getHostname } from './utils';
 import { usePipeline } from './middleware';
 
@@ -69,13 +70,16 @@ export default function useProxy(
       options,
       hostname: getHostname(request),
       response: new Response('Unhandled response'),
+      storage: new WorkersKV(),
       upstream: null,
     };
 
     try {
       await pipeline.execute(context);
     } catch (error) {
-      context.response = createResponse(error, 500);
+      if (error instanceof Error) {
+        context.response = createResponse(error.message, 500);
+      }
     }
     return context.response;
   };

@@ -5,6 +5,7 @@ import {
 } from '../src/load-balancing';
 import { UpstreamOptions } from '../types/upstream';
 import { Context } from '../types/middleware';
+import { WorkersKV } from '../src/storage';
 
 const upstreamArray: UpstreamOptions[] = [
   {
@@ -42,6 +43,7 @@ test('load-balancing.ts -> useLoadBalancing()', async () => {
     response: new Response(),
     hostname: 'https://github.com',
     upstream: null,
+    storage: new WorkersKV(),
     options: {
       upstream: upstreamArray,
       loadBalancing: {

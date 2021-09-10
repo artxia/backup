@@ -74,6 +74,7 @@ export const useLoadBalancing: Middleware = async (
   const upstreamArray = Array.isArray(upstream) ? upstream : [upstream];
   if (loadBalancing === undefined) {
     context.upstream = randomHandler(upstreamArray, request);
+    await next();
     return;
   }
 
