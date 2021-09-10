@@ -1,3 +1,4 @@
+#coding=utf-8
 from telethon import TelegramClient, events, sync, errors
 from db import utils
 import socks,os,datetime
@@ -5,20 +6,29 @@ import re as regex
 import diskcache
 from urllib.parse import urlparse
 from telethon.tl.functions.channels import JoinChannelRequest
-import yaml
+from telethon.tl.functions.channels import DeleteHistoryRequest
+from telethon.tl.functions.channels import LeaveChannelRequest, DeleteChannelRequest
+from logger import logger
+from config import config,_current_path as current_path
+
+
+PRODUCTION = False # 是否为生产环境（无代理配置）
 
 # 配置访问tg服务器的代理
-# proxy = (socks.SOCKS5, '127.0.0.1', 1088)
 proxy = None
+if all(config['proxy'].values()): # 同时不为None
+  logger.info(f'proxy info:{config["proxy"]}')
+  proxy = (getattr(socks,config['proxy']['type']), config['proxy']['address'], config['proxy']['port'])
+# proxy = (socks.SOCKS5, '127.0.0.1', 1088)
+else:
+  PRODUCTION = True # 生产环境会退出无用的频道/群组
 
-parent_path = os.path.dirname(os.path.realpath(__file__))# 保存数据文件/登录会话信息路径  当前目录
-conf_path = parent_path + '/config.yml'
-with open(conf_path) as f:
-  account = yaml.load(f.read(),Loader = yaml.FullLoader)
-cache = diskcache.Cache(parent_path+'/.tmp')# 设置缓存文件目录  当前tmp文件夹。用于缓存分步执行命令的操作，避免bot无法找到当前输入操作的进度
-client = TelegramClient('{}/.{}_tg_login'.format(parent_path,account['username']), account['api_id'], account['api_hash'], proxy = proxy)
-# client.start(phone=account['phone'])
-client.start()
+
+account = config['account']
+cache = diskcache.Cache(current_path+'/.tmp')# 设置缓存文件目录  当前tmp文件夹。用于缓存分步执行命令的操作，避免bot无法找到当前输入操作的进度
+client = TelegramClient('{}/.{}_tg_login'.format(current_path,account['username']), account['api_id'], account['api_hash'], proxy = proxy)
+client.start(phone=account['phone'])
+# client.start()
 
 # 设置bot，且直接启动
 bot = TelegramClient('.{}'.format(account['bot_name']), account['api_id'], account['api_hash'],proxy = proxy).start(bot_token=account['bot_token'])
@@ -41,6 +51,7 @@ def is_regex_str(string):
   return regex.search(r'^/.*/[a-zA-Z]*?$',string)
 
 # client相关操作 目的：读取消息
+@client.on(events.MessageEdited)
 @client.on(events.NewMessage())
 async def on_greeting(event):
     '''Greets someone'''
@@ -54,7 +65,7 @@ async def on_greeting(event):
         text += ' {}'.format(message.file.name)# 追加上文件名
 
       # 打印消息
-      # print(event.chat.id,event.chat.title,event.message.id,text,'\n\n') 
+      logger.debug(f'event.chat.username: {event.chat.username},event.chat.id:{event.chat.id},event.chat.title:{event.chat.title},event.message.id:{event.message.id},text:{text}')
 
       # 1.方法(失败)：转发消息 
       # chat = 'keyword_alert_bot' #能转发 但是不能真对特定用户。只能转发给当前允许账户的bot
@@ -77,7 +88,7 @@ where l.channel_name = '{}' and l.status = 0  order by l.create_time  desc
       """.format(event.chat.username)
       find = utils.db.connect.execute_sql(sql).fetchall()
       if find:
-        print(event.chat.username,find) # 打印当前频道，订阅的用户以及关键字
+        logger.info(f'channel: {event.chat.username}; all chat_id & keywords:{find}') # 打印当前频道，订阅的用户以及关键字
         for receiver,keywords in find:
           try:
             if is_regex_str(keywords):# 输入的为正则字符串
@@ -92,26 +103,35 @@ where l.channel_name = '{}' and l.status = 0  order by l.create_time  desc
               regex_match_str = list(set(regex_match_str))# 处理重复元素
               if regex_match_str:# 默认 findall()结果
                 message_str = '[#FOUND](https://t.me/{}/{}) **{}**'.format(event.chat.username,message.id,regex_match_str)
-                print(receiver,message_str)
+                logger.info(f'REGEX: receiver chat_id:{receiver}, message_str:{message_str}')
                 await bot.send_message(receiver, message_str,link_preview = True,parse_mode = 'markdown')
+              else:
+                logger.debug(f'regex_match empty. regex:{keywords} ,message: t.me/{event.chat.username}/{event.message.id}')
             else:#普通模式
               if keywords in text:
                 message_str = '[#FOUND](https://t.me/{}/{}) **{}**'.format(event.chat.username,message.id,keywords)
-                print(receiver,message_str)
+                logger.info(f'TEXT: receiver chat_id:{receiver}, message_str:{message_str}')
                 await bot.send_message(receiver, message_str,link_preview = True,parse_mode = 'markdown')
           except errors.rpcerrorlist.UserIsBlockedError  as _e:
-            print('ERROR:::{}'.format(_e))  # User is blocked (caused by SendMessageRequest)  用户已手动停止bot
+            # User is blocked (caused by SendMessageRequest)  用户已手动停止bot
+            logger.error(f'{_e}')
             pass # 关闭全部订阅
           except ValueError  as _e:
-            print('ERROR:::{}'.format(_e))
-            # print(_e)  # 用户从未使用bot
+            # 用户从未使用bot
+            logger.error(f'{_e}')
             # 删除用户订阅和id
             isdel = utils.db.user.delete().where(utils.User.chat_id == receiver).execute()
             user_id = utils.db.user.get_or_none(chat_id=receiver)
             if user_id:
               isdel2 = utils.db.user_subscribe_list.delete().where(utils.User_subscribe_list.user_id == user_id.id).execute()
           except Exception as _e:
-            print('ERROR:::{}'.format(_e))
+            logger.error(f'{_e}')
+      else:
+        logger.debug(f'sql find empty. event.chat.username:{event.chat.username}, find:{find}, sql:{sql}')
+        if PRODUCTION:
+          logger.info(f'Leave  Channel/group: {event.chat.username}')
+          await leave_channel(event.chat.username)
+
 
 # bot相关操作
 def parse_url(url):
@@ -194,6 +214,22 @@ async def join_channel_insert_subscribe(user_id,keyword_channel_list):
         result.append((keyword,channel_name))
   return result
 
+async def leave_channel(channel_name):
+  '''
+  退出无用的频道/组
+
+  Args:
+      channel_name ([type]): [description]
+  '''
+  try:
+      await client(LeaveChannelRequest(channel_name))
+      await client(DeleteChannelRequest(channel_name))
+      await client(DeleteHistoryRequest(channel_name))
+      logger.info(f'退出 {channel_name}')
+  except Exception as _e: # 不存在的频道
+      return f'无法退出该频道：{channel_name}, {_e}'
+      
+
 def update_subscribe(user_id,keyword_channel_list):
   """
   更新订阅数据表（取消订阅操作）
@@ -258,6 +294,7 @@ async def subscribe(event):
     command, keywords, channels = splitd
     result = await join_channel_insert_subscribe(user_id,parse_full_command(command, keywords, channels))
     if isinstance(result,str): 
+        logger.error('join_channel_insert_subscribe 错误：'+result)
         await event.respond(result,parse_mode = None) # 提示错误消息
     else:
       msg = ''
