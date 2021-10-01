@@ -220,14 +220,14 @@ const removeInline = url => inlineLinks.deleteMany({url});
 
 const getInine = async url => {
   const exists = await inlineLinks.findOne({url});
-  await updateOne({url}, inlineLinks);
+  // await updateOne({url}, inlineLinks);
   return exists;
 };
 
 const get = async url => {
   const me = await links.findOne({url});
   if (me) {
-    await updateOne({url});
+    // await updateOne({url});
     return me.toObject();
   }
   return false;
@@ -237,14 +237,14 @@ const updateOne = async (item, collection = links) => {
   const {url} = item;
   // eslint-disable-next-line no-param-reassign
   item.$inc = {af: 1};
-  return collection.updateOne({url}, item, {upsert: true});
+  //return collection.updateOne({url}, item, {upsert: true});
 };
 
 const log = async item => {
   const {url} = item;
   // eslint-disable-next-line no-param-reassign
   item.$inc = {af: 1};
-  return logs.updateOne({url}, item, {upsert: true});
+  //return logs.updateOne({url}, item, {upsert: true});
 };
 
 module.exports.stat = stat;

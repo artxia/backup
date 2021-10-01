@@ -49,7 +49,7 @@ const makeIvLink = async (urlParam, paramsObj) => {
     res.p = pages;
   }
   if (paramsObj.db) {
-    await db.updateOne({url, ...res});
+    //await db.updateOne({url, ...res});
   }
 
   res.isLong = res.p;
@@ -94,7 +94,7 @@ const isText = async (urlParam, q) => {
     const {url: newUrl, headers} = r;
     url = newUrl;
     const contentType = headers.get('content-type') || '';
-    logger(contentType);
+    //logger(contentType);
     startsText = contentType.startsWith('text/');
   } catch (e) {
     //

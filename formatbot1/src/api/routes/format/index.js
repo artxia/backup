@@ -175,7 +175,6 @@ const format = (bot, botHelper) => {
 
   const addToQueue = async ctx => {
     try {
-      logger('action add')
       const {update} = ctx;
       let {message} = ctx;
       if (
@@ -188,17 +187,17 @@ const format = (bot, botHelper) => {
       }
       let isChanMesId = false;
       if (update && update.channel_post) {
-        logger(update.channel_post.chat);
+        logger('chp');
         message = update.channel_post;
       }
-      logger('message')
-      logger(message);
+
       const {reply_to_message: rplToMsg, caption_entities: cEntities} =
         message || {};
       if (rplToMsg || message.audio) {
-        logger('return');
         return;
       }
+      
+      
       let {entities} = message;
 
       const msg = message;
@@ -223,8 +222,6 @@ const format = (bot, botHelper) => {
         }
       }
       if (msg && text) {
-        //logger(msg)
-        //logger(text)
         try {
           const force = isAdm && check(text);
           let links = getAllLinks(text);
@@ -255,7 +252,7 @@ const format = (bot, botHelper) => {
           }
           if (!parsed.pathname) {
             if (botHelper.db !== false) {
-              await log({link, type: 'nopath'});
+              //await log({link, type: 'nopath'});
             }
             return;
           }
@@ -263,15 +260,12 @@ const format = (bot, botHelper) => {
             (await ctx.reply('Waiting for instantView...').catch(() => {})) ||
             {};
           const messageId = res && res.message_id;
-          logger('test')
+          
           await timeout(0.1);
           if (!messageId) {
-            
+            logger('no messageId')
             return;
           }
-          //checkData(!messageId, 'blocked');
-          logger('link')
-          logger(link)
           const rabbitMes = {
             message_id: messageId,
             chatId,
@@ -355,8 +349,8 @@ const format = (bot, botHelper) => {
           params = {...params, ...botParams};
           params.browserWs = browserWs;
           params.db = botHelper.db !== false;
-          logger(params);
-          await timeout(0.1);
+          //logger(params);
+          await timeout(0.2);
           const ivTask = ivMaker.makeIvLink(link, params);
           const ivTimer = new Promise(resolve => {
             skipTimer = setInterval(() => {
