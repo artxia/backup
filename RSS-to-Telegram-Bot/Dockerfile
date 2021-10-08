@@ -1,22 +1,27 @@
-# Use an official Python runtime as a parent image
-FROM python:3.7-slim
+FROM alpine/git:latest AS builder
 
-# Set the working directory to /app
 WORKDIR /app
 
-# Copy the current directory contents into the container at /app
 COPY . /app
 
-# Install any needed packages specified in requirements.txt
-RUN pip install --trusted-host pypi.python.org -r /app/requirements.txt
-# Define environment variable
-ENV PYTHONUNBUFFERED 1
-ENV TOKEN X
-ENV CHATID X
-ENV MANAGER X
-ENV DELAY 300
-ENV T_PROXY X
-ENV R_PROXY X
+RUN \
+  echo "$(git describe --tags --always)@$(git branch --show-current)" > .version ; \
+  if test $(expr length "$(cat .version)") -le 3; then echo "dirty-build@$(date -Iseconds)" | tee .version; else echo "build@$(date -Iseconds)" | tee -a .version; fi ; \
+  rm -rf .git .github resources && \
+  mkdir -p config
 
-# Run app.py when the container launches
+#----------------------------------------
+
+FROM python:3.9-slim
+
+WORKDIR /app
+
+COPY --from=builder /app /app
+
+RUN apt-get update && apt-get install -y gcc && \
+  pip install --trusted-host pypi.python.org -r /app/requirements.txt && \
+  apt-get purge -y gcc && apt-get autoremove --purge -y && \
+  ls -la ; \
+  cat .version
+
 CMD ["python", "-u", "telegramRSSbot.py"]

@@ -8,43 +8,32 @@
 
 <a href="https://github.com/Rongronggg9/RSS-to-Telegram-Bot"><img src="https://rongronggg9.github.io/external-resources/RSS-to-Telegram-Bot/RSStT_icon.svg" width = "256" height = "256"  alt="RSStT_icon"/><a/>
 
+[更新日志 CHANGELOG](CHANGELOG.md)
+
 本项目现改以 AGPLv3 许可证分发，这是为了将来的多用户功能准备的。
 
 加入频道 [@RSStT_Channel](https://t.me/RSStT_Channel) 以获取更新资讯；加入群组 [@RSStT_Group](https://t.me/RSStT_Group) 以参与讨论或反馈问题。
 
-## 新功能 in v1.5
-> 注意：由于未来可能加入多用户功能而导致数据库及配置文件变更，请时常备份订阅列表（目前仅可通过 `/test` 备份）
-- **文章解码完全重写，更加稳定及更加忠实还原原有格式**
-    - **针对大量短动态类 RSS 源进行了测试**
-    - **即使是长文 RSS 源，也可以正确处理**
-- **支持 GIF**
-- **消息多于 10 张媒体时支持分条发送**
-- **支持视频与图片任意混合于同一条消息**
-- 超限媒体不再直接丢弃，而是作为链接附加到消息末尾
-- 自动判断 RSS 源的标题是否为自动填充，并自动选择是否略去标题
-- 自动显示作者名
-- 自动替换 emoji shortcodes 为 emoji
-- 自动替换满足某些特征的表情图片为 emoji 或其描述文本
-- 因 telegram api 不稳定而无法发出图片时，自动更换图床服务器重发
-    - 仅限微博图源，非微博图源自动将所有媒体转为链接附加到消息末尾
-- 改进文本长度计数方式，不再因为链接 url 过长而导致消息被提前分割
-- 更改 user-agent，规避某些网站屏蔽 requests UA 的问题
-- 改进的日志记录
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template?template=https%3A%2F%2Fgithub.com%2FRongronggg9%2FRSS-to-Telegram-Bot%2Ftree%2Fdev&plugins=redis&envs=TOKEN%2CCHATID%2CMANAGER%2CDELAY&optionalEnvs=DELAY&TOKENDesc=%E4%BD%A0%E5%9C%A8+%40BotFather+%E7%94%B3%E8%AF%B7%E5%88%B0%E7%9A%84+bot+%E7%9A%84+token&CHATIDDesc=%E4%BD%A0%E7%9A%84+userid%EF%BC%88%E7%BA%AF%E6%95%B0%E5%AD%97%EF%BC%8C%E4%BB%8E+%40userinfobot%EF%BC%89%E8%8E%B7%E5%8F%96%EF%BC%9B%E6%88%96%E8%80%85%E9%9C%80%E8%A6%81%E6%8E%A8%E9%80%81%E5%88%B0%E7%9A%84%E9%A2%91%E9%81%93%E7%94%A8%E6%88%B7%E5%90%8D%EF%BC%88%E6%A0%BC%E5%BC%8F%EF%BC%9A%40channel%EF%BC%89&MANAGERDesc=%E4%BD%A0%E7%9A%84+userid&DELAYDesc=%E9%97%B4%E9%9A%94%E5%A4%9A%E4%B9%85%E6%A3%80%E6%9F%A5%E4%B8%80%E6%AC%A1%E8%AE%A2%E9%98%85%E6%9B%B4%E6%96%B0%EF%BC%88%E5%8D%95%E4%BD%8D%EF%BC%9A%E7%A7%92%EF%BC%89&referralCode=PEOFMi)
+
+[Railway 部署教程](https://telegra.ph/%E9%80%9A%E8%BF%87-Railway-%E9%83%A8%E7%BD%B2-RSS-to-Telegram-Bot-09-13)
 
 ## 功能
 
-- 将 RSS 全文转发到 Telegram
-    - 转发时尽量还原原有格式
-    - 转发时自动将微博表情转化为同义 emoji
+- 将 RSS 全文发送到 Telegram
+    - 还原原有格式
+    - 自动判断 RSS 源的标题是否为自动填充，并自动选择是否略去标题
+    - 自动显示作者名
+    - 将微博表情或 emoji shortcodes 转化为 emoji
         - 仅限有同义 emoji 的微博表情
     - 超长消息自动分割
-        - 多媒体消息编码后大于 1024 字，无图消息编码后大于 4096 字
+        - 如果配置了 Telegraph，则会自动通过 Telegraph 发送
     - 支持对 Telegram Bot API 和 RSS 订阅分别配置代理
-- 支持含图消息转发
-    - 至多 10 张图片
+- 支持含媒体消息转发
+    - 至多 10 个媒体，可以是图片或视频
     - 自动缩小大于 5MB 或尺寸过大 (宽度 + 高度 <= 10000) 的图片
-        - 仅限微博图源，~~其他图源的过大图片将被直接丢弃~~
-- ~~(alpha)~~ 支持视频转发
+        - 仅限微博图源，其他图源的图片将被转为链接附加至消息末尾
+- 支持 OPML 导入导出
 - 转发失败时向 `MANAGER` 发送含错误信息的提示 **(未设定则直接发送至 `CHATID` )**
 - **设定 `MANAGER` 时只会响应对应用户的命令 (未设定则只响应 `CHATID` 对应用户的命令)**
 
@@ -53,10 +42,6 @@
 
 ## 已知的问题
 
-- ~~针对 RSSHub 生成的微博 RSS 源编写，对于其他 RSS 源可能出现不可预料的问题~~
-    - ~~非微博图源的过大图片/视频将被直接丢弃~~
-    - ~~图片至多 10 张 (考虑到微博已推出超九图功能，将在未来修复)~~
-- 微博视频转发清晰度较低，~~若视频过大也将被直接丢弃~~
 - 用于频道时，无法接受频道内的命令，需直接对 bot 在私人对话中发送命令
     - **必须设定 `MANAGER` 并使用其对应的用户操作，否则不会响应**
 - 没有多用户功能，仅可向一个用户/频道 ( `CHATID` ) 推送 RSS
@@ -95,31 +80,12 @@
 For the docker image go to: https://hub.docker.com/r/rongronggg9/rss-to-telegram
 
 ```sh
-docker create \
-    --name <container name> \
-    --restart unless-stopped \
-    -v </path/to/config>:/app/config \
-    -e DELAY=<delay> \
-    -e TOKEN=<bot_token> \
-    -e CHATID=<target_user_userid / @channel_username> \
-    -e MANAGER=<bot_manager_userid> \
-    -e T_PROXY=<scheme://host:port/> \
-    -e R_PROXY=<scheme://host:port/> \
-    rongronggg9/rss-to-telegram
+mkdir rsstt
+cd rsstt
+wget https://raw.githubusercontent.com/Rongronggg9/RSS-to-Telegram-Bot/master/docker-compose.yml.sample -O docker-compose.yml
+vi docker-compose.yml  # 自行按文件中的注释修改 docker-compose.yml
+docker-compose up -d
 ```
-
-```sh
-docker start <container name>
-```
-
-#### Note
-
-- 如果想测试最新的功能，请将最后的 `rongronggg9/rss-to-telegram` 替换为 `rongronggg9/rss-to-telegram:dev`
-- 尖括号`<>`表示需要用户填入自己的配置，尖括号`<>`本身不是命令的一部分
-- 请务必设置`-v </path/to/config>:/app/config`，否则重新配置容器后订阅数据将丢失
-- `T_PROXY` 对 Telegram Bot API 生效，`R_PROXY` 对 RSS 订阅生效，不使用代理可直接略去。考虑到 DNS 污染问题，请尽量使用 socks5 代理，并在填入的代理 URL 里使用`socks5h`
-  而不是`socks5`，示例: `socks5h://127.0.0.1:1080/`
-- 版本号没有特别意义，目前没有针对各版本号特别构建 docker 镜像
 
 ### Installation
 
@@ -130,17 +96,12 @@ Remember to replace `<arg>`, `<` and `>` should be deleted.
 ```sh
 git clone https://github.com/Rongronggg9/RSS-to-Telegram-Bot.git
 cd RSS-to-Telegram-Bot
-pip install -r requirements.txt
-export PYTHONUNBUFFERED 1
-export DELAY <delay>
-export TOKEN <bot token>
-export CHATID <target user userid / @channel_username>
-export MANAGER <bot manager userid>
-export T_PROXY <scheme://host:port/>
-export R_PROXY <scheme://host:port/>
+pip3 install -r requirements.txt
+export PYTHONUNBUFFERED=1
+# 参照 docker-compose.yml export 环境变量
 python3 -u telegramRSSbot.py
 ```
 
 ## 备注
 
-本项目原是 [BoKKeR/RSS-to-Telegram-Bot](https://github.com/BoKKeR/RSS-to-Telegram-Bot) 的 fork ，考虑到改动较大， 因此复制成独立的 repository 。
+本项目原是 [BoKKeR/RSS-to-Telegram-Bot](https://github.com/BoKKeR/RSS-to-Telegram-Bot) 的 fork ，目前除了数据库和命令名已经没有任何相像的地方了。
