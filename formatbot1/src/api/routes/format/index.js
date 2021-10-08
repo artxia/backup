@@ -1,10 +1,9 @@
 const url = require('url');
-const keyboards = require('./keyboards');
 
+const keyboards = require('../../../keyboards/keyboards');
 const messages = require('../../../messages/format');
 const db = require('../../utils/db');
 const logger = require('../../utils/logger');
-const {log} = require('../../utils/db');
 const ivMaker = require('../../utils/ivMaker');
 const puppet = require('../../utils/puppet');
 const {check, timeout, checkData} = require('../../utils');
@@ -96,7 +95,7 @@ const format = (bot, botHelper) => {
       };
       return msg.answerInlineQuery([res]).catch(() => {});
     }
-    const ivObj = await db.get(links[0]);
+    const ivObj = await db.getIV(links[0]);
     if (ivObj) {
       return botHelper
         .sendInline({
@@ -133,7 +132,7 @@ const format = (bot, botHelper) => {
 
   bot.action(/.*/, async ctx => {
     const [data] = ctx.match;
-    logger('action')
+    logger('action');
     const s = data === 'no_img';
     if (s) {
       const {message} = ctx.update.callback_query;
@@ -196,8 +195,6 @@ const format = (bot, botHelper) => {
       if (rplToMsg || message.audio) {
         return;
       }
-      
-      
       let {entities} = message;
 
       const msg = message;
@@ -231,7 +228,7 @@ const format = (bot, botHelper) => {
           }
           link = getLink(links);
           if (!link) {
-            logger('no link')
+            logger('no link');
             return;
           }
           const parsed = url.parse(link);
@@ -240,9 +237,6 @@ const format = (bot, botHelper) => {
             if (l && l[1]) link = decodeURIComponent(l[1]);
           }
           if (link.match(new RegExp(validRegex))) {
-            if (botHelper.db !== false) {
-              await log({link, type: 'return'});
-            }
             ctx
               .reply(messages.showIvMessage('', link, link), {
                 parse_mode: 'Markdown',
@@ -251,19 +245,15 @@ const format = (bot, botHelper) => {
             return;
           }
           if (!parsed.pathname) {
-            if (botHelper.db !== false) {
-              //await log({link, type: 'nopath'});
-            }
             return;
           }
           const res =
             (await ctx.reply('Waiting for instantView...').catch(() => {})) ||
             {};
           const messageId = res && res.message_id;
-          
           await timeout(0.1);
           if (!messageId) {
-            logger('no messageId')
+            logger('no messageId');
             return;
           }
           const rabbitMes = {
@@ -349,7 +339,7 @@ const format = (bot, botHelper) => {
           params = {...params, ...botParams};
           params.browserWs = browserWs;
           params.db = botHelper.db !== false;
-          //logger(params);
+          // logger(params);
           await timeout(0.2);
           const ivTask = ivMaker.makeIvLink(link, params);
           const ivTimer = new Promise(resolve => {
@@ -445,9 +435,6 @@ const format = (bot, botHelper) => {
     }
     logger(error);
     if (error) {
-      if (botHelper.db !== false) {
-        await log({url: link, type: 'error', error});
-      }
       if (isBroken && resolveMsgId) {
         botHelper
           .sendAdminOpts(error, keyboards.resolvedBtn(resolveMsgId, chatId))
