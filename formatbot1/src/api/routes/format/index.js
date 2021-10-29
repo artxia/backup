@@ -16,6 +16,10 @@ const rabbitmq = require('../../../service/rabbitmq');
 const group = process.env.TGGROUP;
 
 const IV_MAKING_TIMEOUT = +(process.env.IV_MAKING_TIMEOUT || 60);
+const IV_CHAN_ID = +(process.env.IV_CHAN_ID);
+const IV_CHAN_MID = +(process.env.IV_CHAN_MID);
+const USERIDS = (process.env.USERIDS || '').split(',');
+
 rabbitmq.startChannel();
 global.lastIvTime = +new Date();
 const supportLinks = [process.env.SUP_LINK];
@@ -23,16 +27,27 @@ for (let i = 1; i < 10; i += 1) {
   if (process.env[`SUP_LINK${i}`]) {
     supportLinks.push(process.env[`SUP_LINK${i}`]);
   }
-}
+};
 
-const support = (ctx, botHelper) => {
+const support = async (ctx, botHelper) => {
   let system = JSON.stringify(ctx.message.from);
+  const {
+    chat: {id: chatId},
+  } = ctx.message;
+
+  if (USERIDS.length && USERIDS.includes(`${chatId}`)) {
+    return;
+  }
   try {
     const hide = Object.create(keyboards.hide());
-    ctx.reply(messages.support(supportLinks), {
+    await ctx.reply(messages.support(supportLinks), {
       hide,
       disable_web_page_preview: true,
     });
+    
+    if (IV_CHAN_MID) {
+      botHelper.forward(IV_CHAN_MID, IV_CHAN_ID * -1, chatId);
+    }
   } catch (e) {
     system = `${e}${system}`;
   }
@@ -40,8 +55,19 @@ const support = (ctx, botHelper) => {
 };
 
 const startOrHelp = (ctx, botHelper) => {
+  
   if (!ctx.message) {
-    return botHelper.sendAdmin(JSON.stringify(ctx.update));
+    //return botHelper.sendAdmin(JSON.stringify(ctx.update));
+    const {chat: {id: chatId}} = ctx.message;
+    if (USERIDS.length && USERIDS.includes(`${chatId}`)) {
+      return;
+    }
+  } else {
+
+    const {chat: {id: chatId}} = ctx.message;
+    if (USERIDS.length && USERIDS.includes(`${chatId}`)) {
+      return;
+    }
   }
   let system = JSON.stringify(ctx.message.from);
   try {
@@ -244,6 +270,10 @@ const format = (bot, botHelper) => {
               .catch(e => botHelper.sendError(e));
             return;
           }
+          //console.log(link);
+          if (link.match(/^https?:\/\/t\.me\//)) {
+            return;
+          }
           if (!parsed.pathname) {
             return;
           }
@@ -293,6 +323,9 @@ const format = (bot, botHelper) => {
   const jobMessage = async task => {
     const {chatId, message_id: messageId, q, force, isChanMesId, inline} = task;
     let {link} = task;
+    if (link.match(/^https?:\/\/t\.me\//)) {
+        return;
+    }
     let error = '';
     let isBroken = false;
     const resolveMsgId = false;

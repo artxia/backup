@@ -122,7 +122,7 @@ const createBroadcast = async (ctx, txt) => {
 };
 
 const startBroadcast = async (ctx, txtParam, bot) => {
-  const [cId, Mid, FromId, isChannel] = getCids(txtParam);
+  const [cId, Mid, FromId, isChannel, SecondMid] = getCids(txtParam);
   if (!cId) {
     return ctx.reply('broad completed no id');
   }
@@ -162,6 +162,10 @@ const startBroadcast = async (ctx, txtParam, bot) => {
         try {
           // eslint-disable-next-line no-await-in-loop
           await runCmd();
+          if (SecondMid) {
+            const runCmd2 = () => bot[sendCmd](SecondMid, FromId * (isChannel ? -1 : 1), id);
+            await runCmd2();
+          }
           success.push({
             updateOne: {
               filter: {_id},
