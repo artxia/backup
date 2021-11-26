@@ -223,7 +223,17 @@ const clear = async msg => {
   const d = await links.deleteMany({url: s});
   return JSON.stringify(d);
 };
-
+const clear2 = async msg => {
+  let search = msg.text.replace('/cleardb2', '').trim();
+  search = `${search}`.trim();
+  if (!search) {
+    return Promise.resolve('empty');
+  }
+  const s = new RegExp(`^https?://${search}`);
+  const d = await linksOld1.deleteMany({url: s});
+  return JSON.stringify(d);
+};
+//linksOld1
 const removeInline = url => inlineLinks.deleteMany({url});
 
 const updateOne = (item, collection = links) => {
@@ -264,6 +274,7 @@ const getIV = async url => {
 
 module.exports.stat = stat;
 module.exports.clear = clear;
+module.exports.clear2 = clear2;
 module.exports.updateOne = updateOne;
 module.exports.removeInline = removeInline;
 module.exports.getInine = getInine;

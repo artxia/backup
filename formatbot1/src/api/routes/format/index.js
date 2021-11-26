@@ -16,8 +16,8 @@ const rabbitmq = require('../../../service/rabbitmq');
 const group = process.env.TGGROUP;
 
 const IV_MAKING_TIMEOUT = +(process.env.IV_MAKING_TIMEOUT || 60);
-const IV_CHAN_ID = +(process.env.IV_CHAN_ID);
-const IV_CHAN_MID = +(process.env.IV_CHAN_MID);
+const IV_CHAN_ID = +process.env.IV_CHAN_ID;
+const IV_CHAN_MID = +process.env.IV_CHAN_MID;
 const USERIDS = (process.env.USERIDS || '').split(',');
 
 rabbitmq.startChannel();
@@ -27,7 +27,7 @@ for (let i = 1; i < 10; i += 1) {
   if (process.env[`SUP_LINK${i}`]) {
     supportLinks.push(process.env[`SUP_LINK${i}`]);
   }
-};
+}
 
 const support = async (ctx, botHelper) => {
   let system = JSON.stringify(ctx.message.from);
@@ -43,8 +43,9 @@ const support = async (ctx, botHelper) => {
     await ctx.reply(messages.support(supportLinks), {
       hide,
       disable_web_page_preview: true,
+      parse_mode: 'Markdown',
     });
-    
+
     if (IV_CHAN_MID) {
       botHelper.forward(IV_CHAN_MID, IV_CHAN_ID * -1, chatId);
     }
@@ -55,16 +56,18 @@ const support = async (ctx, botHelper) => {
 };
 
 const startOrHelp = (ctx, botHelper) => {
-  
   if (!ctx.message) {
-    //return botHelper.sendAdmin(JSON.stringify(ctx.update));
-    const {chat: {id: chatId}} = ctx.message;
+    // return botHelper.sendAdmin(JSON.stringify(ctx.update));
+    const {
+      chat: {id: chatId},
+    } = ctx.message;
     if (USERIDS.length && USERIDS.includes(`${chatId}`)) {
       return;
     }
   } else {
-
-    const {chat: {id: chatId}} = ctx.message;
+    const {
+      chat: {id: chatId},
+    } = ctx.message;
     if (USERIDS.length && USERIDS.includes(`${chatId}`)) {
       return;
     }
@@ -76,6 +79,7 @@ const startOrHelp = (ctx, botHelper) => {
     system = `${e}${system}`;
   }
 
+  // eslint-disable-next-line consistent-return
   return botHelper.sendAdmin(system);
 };
 
@@ -112,17 +116,19 @@ const format = (bot, botHelper) => {
     let {query} = msg.update.inline_query;
     query = query.trim();
     const links = getAllLinks(query);
-    if (!botHelper.isAdmin(msg.from.id) || !links[0]) {
+    if (links.length === 0) {
       const res = {
         type: 'article',
         id,
         title: 'Links not found',
+        cache_time: 0,
+        is_personal: true,
         input_message_content: {message_text: 'Links not found'},
       };
       return msg.answerInlineQuery([res]).catch(() => {});
     }
     const ivObj = await db.getIV(links[0]);
-    if (ivObj) {
+    if (ivObj && ivObj.iv) {
       return botHelper
         .sendInline({
           messageId: id,
@@ -131,14 +137,10 @@ const format = (bot, botHelper) => {
         .catch(e => logger(e));
     }
     const exist = await db.getInine(links[0]);
-
-    /* let result = await bot.telegram.getChatMember(TG_UPDATES_CHANID,
-      msg.from.id).catch(console.log); */
-
     const res = {
       type: 'article',
       id,
-      title: "Waiting for InstantView... Type 'Space' to check",
+      title: "Waiting for InstantView... Type 'Any symbol' to check",
       input_message_content: {message_text: links[0]},
     };
     if (!exist) {
@@ -152,7 +154,7 @@ const format = (bot, botHelper) => {
         .catch(() => {});
     }
     return msg
-      .answerInlineQuery([res], {cache_time: 0, is_personal: true})
+      .answerInlineQuery([res], {cache_time: 60, is_personal: true})
       .catch(() => {});
   });
 
@@ -270,7 +272,6 @@ const format = (bot, botHelper) => {
               .catch(e => botHelper.sendError(e));
             return;
           }
-          //console.log(link);
           if (link.match(/^https?:\/\/t\.me\//)) {
             return;
           }
@@ -307,6 +308,7 @@ const format = (bot, botHelper) => {
         }
       }
     } catch (e) {
+      // console.log(e);
       botHelper.sendError(e).catch(() => {});
     }
   };
@@ -324,7 +326,7 @@ const format = (bot, botHelper) => {
     const {chatId, message_id: messageId, q, force, isChanMesId, inline} = task;
     let {link} = task;
     if (link.match(/^https?:\/\/t\.me\//)) {
-        return;
+      return;
     }
     let error = '';
     let isBroken = false;
@@ -425,9 +427,9 @@ const format = (bot, botHelper) => {
       const messageText = `${TITLE}${RESULT}`;
       if (inline) {
         let title = '';
-        if (error) {
+        if (error || !ivLink) {
           title = 'Sorry IV not found';
-          ivLink = error;
+          ivLink = title;
         }
         await botHelper
           .sendInline({
@@ -436,7 +438,9 @@ const format = (bot, botHelper) => {
             ivLink,
           })
           .then(() => db.removeInline(link))
-          .catch(() => {});
+          .catch(() => {
+            db.removeInline(link);
+          });
       } else {
         if (isChanMesId) {
           let toDelete = messageId;

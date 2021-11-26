@@ -61,6 +61,17 @@ const botRoute = (bot, conn) => {
     }
   });
 
+  bot.command('cleardb2', async ctx => {
+    if (botHelper.isAdmin(ctx.message.chat.id)) {
+      const r = await db.clear2(ctx.message);
+      try {
+        ctx.reply(r);
+      } catch (e) {
+        botHelper.sendError(e);
+      }
+    }
+  });
+  
   bot.command('srv', ({message}) => {
     if (botHelper.isAdmin(message.from.id)) {
       botHelper.sendAdmin(`srv: ${JSON.stringify(message)}`);
