@@ -51,11 +51,20 @@ http://t.me/keyword_alert_bot
 ## BUILD
 
 1. config.yml.default --> config.yml
- 
+
  修改config.yml配置
 
-- tg账户[开通api](https://my.telegram.org/apps)
-- [创建新的bot](https://t.me/BotFather)
+- Create Telelgram Account & API
+
+[开通api](https://my.telegram.org/apps)
+
+  ❗️⚠️请使用新注册的Telegram账户，否则系统会自动退出无用户订阅的频道和群组
+
+
+- Create BOT 
+
+https://t.me/BotFather
+
 
 
 首次运行需要用tg账户接收数字验证码，且需要输入密码
@@ -73,6 +82,23 @@ $ pipenv shell
 
 $ python3 ./main.py
 ```
+
+3. crontab 
+
+ - update telethon
+
+依赖库telethon可能会有旧版本不可用的情况或者其他BUG，请最好是通过定时任务去执行依赖更新。
+
+e.g. 
+```
+0 0 1 * * cd /home/keyword_alert_bot && pipenv update telethon > /dev/null 2>&1
+```
+
+## BUG Q&A
+
+ - 查看日志发现个别群组无法接收消息，软件客户端正常接收
+ 
+ 请尝试更新telethon解决问题🤔，我也很无助。
 
 ## bot help
 
