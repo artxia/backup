@@ -1,5 +1,46 @@
 # Changelog
 
+## v1.6.1
+
+### en
+
+**This is a rushed release. It bumps the dependency `telethon` to the latest version. Please upgrade to this version
+immediately to avoid being unable to login due to the outdated dependency.**
+
+The bot is currently being actively developed on the `multiuser` branch, but has not been merged back yet to avoid
+introducing breaking changes too early. If you would like to try the multi-user version, there is a public
+demo [@RSStT_Bot](https://t.me/RSStT_Bot) .
+
+#### New features
+
+- `.env` file support (only for manual execution, not for docker)
+- Unescape HTML-escaped post title
+- Use the title as the content of a post if the latter is of no text
+
+#### Changes
+
+- Minor bugfixes
+- Introduce some workarounds to avoid being flood-controlled frequently
+- Introduce some deps to speedup HTTP requests
+
+### zh-Hans
+
+**这是一个仓促的发布。它将依赖 `telethon` 升级到了最新版本。请立即升级到这个版本以免由于依赖过时而无法登录。**
+
+机器人正在 `multiuser` 分支上被活跃开发，但尚未被合并回来，以免过早引入重大变更。如果你想要尝试多用户版本，这里有一个公开的 demo [@RSStT_Bot](https://t.me/RSStT_Bot) 。
+
+#### 新特性
+
+- `.env` 文件支持 (仅在手动执行时支持，不支持 docker)
+- 反转义受到 HTML 转义的文章标题
+- 当文章内容不含有文本时，将标题作为文章的内容
+
+#### 变更
+
+- 一些小的错误修复
+- 引入了一些变通解决方案以免频繁受到泛洪控制
+- 引入了一些依赖以加速 HTTP 请求
+
 ## v1.6.0
 
 ### en
@@ -8,8 +49,8 @@
 
 - Telegram bot library has been migrated from `python-telegram-bot` (which uses HTTP Bot API and is synchronous)
   to `telethon` (which uses MTProto Bot API and is asynchronous)
-    - However, to use MTProto Bot API, an API key is needed. The bot has 7 built-in API keys (collected on the Internet)
-      and in most cases it will not be unable to log in. But if so, please obtain your own API key (
+    - However, to use MTProto Bot API, an API key is needed. The bot has 7 built-in API keys (collected from the
+      Internet) and in most cases it should not be unable to log in. But if so, please obtain your own API key (
       see [docker-compose.yml.sample](https://github.com/Rongronggg9/RSS-to-Telegram-Bot/blob/53f11a473933e620d707c9d15f6d48737bd7a982/docker-compose.yml.sample#L43)
       for details)
 
@@ -56,7 +97,7 @@
       详见 [docker-compose.yml.sample](https://github.com/Rongronggg9/RSS-to-Telegram-Bot/blob/53f11a473933e620d707c9d15f6d48737bd7a982/docker-compose.yml.sample#L43)
       中的说明)
 
-#### 新功能
+#### 新特性
 
 - 由于 Telegram bot 库的替换，bot 可以直接连接到 bot 所属的 DC，不需绕经 HTTP Bot API；也不需轮询获得消息更新，它在接收及发送消息方面都更为迅速，资源占用也更低； 即使 HTTP Bot API
   宕机，bot 也可以正常工作 (
@@ -73,7 +114,7 @@
     - 注意：这是为了在 [railway.app]() 上部署而设计的变通解决方案，未来很可能丢弃
 - 支持 arm64 (docker 构建)
 - 支持在由于 Telegram 服务器不稳定或 Telegram 服务器与媒体服务器之间的网络连接不稳定而导致 Telegram 无法发出带有媒体的消息时，使用媒体反代服务器重新发送。
-- Support colored logging
+- 支持日志着色
 - `docker-compose.yml.sample`
 - 用于检查 bot 版本的 `/version` 命令
 - 如果设置了全局代理 (环境变量 `SOCKS_PROXY`/`HTTP_PROXY`)，会使用它们

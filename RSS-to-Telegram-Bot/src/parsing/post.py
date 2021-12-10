@@ -9,6 +9,7 @@ from emoji import emojize
 from urllib.parse import urlparse, urljoin
 from aiographfix import exceptions
 from aiohttp import ClientError
+from html import unescape
 
 # errors caused by invalid img/video(s)
 from telethon.errors.rpcerrorlist import PhotoInvalidDimensionsError, PhotoSaveFileInvalidError, PhotoInvalidError, \
@@ -52,13 +53,26 @@ def emojify(xml):
 
 
 def get_post_from_entry(entry, feed_title: str, feed_link: str = None) -> 'Post':
-    xml = entry['content'][0]['value'] \
-        if ('content' in entry) and (len(entry['content']) > 0) \
-        else entry['summary']
+    # entry.summary returns summary(Atom) or description(RSS)
+    content = entry.get('content') or entry.get('summary', '')
+
+    if isinstance(content, list):  # Atom
+        if len(content) == 1:
+            content = content[0]
+        else:
+            for _content in content:
+                content_type = _content.get('type', '')
+                if 'html' in content_type or 'xml' in content_type:
+                    content = _content
+                    break
+            else:
+                content = content[0]
+        content = content.get('value', '')
+
     link = entry['link']
     author = entry['author'] if ('author' in entry and type(entry['author']) is str) else None
     title = entry['title']
-    return Post(xml, title, feed_title, link, author, feed_link=feed_link)
+    return Post(content, title, feed_title, link, author, feed_link=feed_link)
 
 
 # ----------------
@@ -97,7 +111,7 @@ class Post:
         self.telegraph_url = telegraph_url
         self.messages: Optional[List[message.Message]] = None
         self.origin_text = self.text.copy()
-        self.title = emojify(title.strip()) if title else None
+        self.title = emojify(unescape(title.strip())) if title else None
         self.feed_title = feed_title
         self.link = link
         self.author = author
@@ -277,18 +291,19 @@ class Post:
 
     def _add_metadata(self):
         plain_text = self.text.get_html(plain=True)
-        if self.feed_title:
-            author = self.author if self.author and self.author not in self.feed_title else None
-            self._add_via(self.feed_title, self.link, author)
         if self.telegraph_url:
             self._add_title(self.title)
-            return
-        if self.title and ('微博' not in self.feed_title or env.DEBUG):
+        elif len(self.text) == 0 and self.title:
+            self.text = Text(self.title)
+        elif self.title and ('微博' not in self.feed_title or env.DEBUG):
             title_tbc = self.title.replace('[图片]', '').replace('[视频]', '').strip().rstrip('.…')
             similarity = fuzz.partial_ratio(title_tbc, plain_text[0:len(self.title) + 10])
             logger.debug(f'{self.title} ({self.link}) is {similarity}% likely to be of no title.')
             if similarity < 90:
                 self._add_title(self.title)
+        if self.feed_title:
+            author = self.author if self.author and self.author not in self.feed_title else None
+            self._add_via(self.feed_title, self.link, author)
 
     def _add_title(self, title: str):
         if self.telegraph_url:
