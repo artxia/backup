@@ -4,8 +4,9 @@ from pagermaid.utils import lang, alias_command
 from struct import error as StructError
 from telethon.tl.functions.messages import GetCommonChatsRequest
 from telethon.tl.functions.users import GetFullUserRequest
-from telethon.tl.functions.channels import DeleteUserHistoryRequest
-from telethon.tl.types import MessageEntityMentionName, ChannelParticipantsAdmins, MessageEntityPhone
+from telethon.tl.functions.channels import DeleteUserHistoryRequest, EditBannedRequest
+from telethon.tl.types import MessageEntityMentionName, ChannelParticipantsAdmins, MessageEntityPhone, PeerChannel, \
+    ChatBannedRights
 from telethon.errors.rpcerrorlist import UserAdminInvalidError, ChatAdminRequiredError, FloodWaitError
 from asyncio import sleep
 from random import uniform
@@ -48,12 +49,30 @@ async def span_ban(context):
         else:
             await context.edit(lang('arg_error'))
             return
+        if isinstance(user, PeerChannel):
+            # 封禁频道
+            try:
+                entity = await context.client.get_input_entity(context.chat_id)
+                user = await context.client.get_input_entity(reply_message.sender.id)
+                await context.client(EditBannedRequest(
+                    channel=entity,
+                    participant=user,
+                    banned_rights=ChatBannedRights(
+                        until_date=None, view_messages=True)
+                ))
+            except ChatAdminRequiredError:
+                return await context.edit(lang('sb_no_per'))
+            return await context.edit(lang('sb_channel'))
+        elif not user:
+            return await context.edit(lang('arg_error'))
         target_user = await context.client(GetFullUserRequest(user))
     else:
         if len(context.parameter) == 1:
             user = context.parameter[0]
             if user.isnumeric():
                 user = int(user)
+                if user < 0:
+                    return await context.edit(lang('arg_error'))
         else:
             await context.edit(lang('arg_error'))
             return
