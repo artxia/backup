@@ -8,11 +8,11 @@ const get = (req, res, next) => {
     return res.json({msg: 'no file'});
   }
   try {
-    const someFile = '.env';
+    const someFile = '.test';
     // eslint-disable-next-line consistent-return
-    fs.readFile(someFile, 'utf8', (err, data) => {
+    fs.readFile(someFile, 'utf8', (err, data = '') => {
       if (err) {
-        return res.json({msg: '1'});
+        //return res.json({msg: '1'});
       }
       let result;
       if (back) {

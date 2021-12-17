@@ -16,15 +16,17 @@ const connectDb = () =>
 const links = Any.collection.conn.model(LINKS_COLL, Any.schema);
 const inlineLinks = Any.collection.conn.model(ILINKS_COLL, Any.schema);
 
-const conn2 = mongoose.createConnection(process.env.MONGO_URI_OLD1, {
-  keepAlive: 1,
-  connectTimeoutMS: 30000,
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-});
+const conn2 =
+  process.env.MONGO_URI_OLD1 &&
+  mongoose.createConnection(process.env.MONGO_URI_OLD1, {
+    keepAlive: 1,
+    connectTimeoutMS: 30000,
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  });
 
-const linksOld1 = conn2.model(LINKS_COLL, Any.schema);
-const inlineLinksOld1 = conn2.model(ILINKS_COLL, Any.schema);
+const linksOld1 = conn2 && conn2.model(LINKS_COLL, Any.schema);
+const inlineLinksOld1 = conn2 && conn2.model(ILINKS_COLL, Any.schema);
 
 const stat = () => links.countDocuments();
 
@@ -91,12 +93,13 @@ const createBroadcast = async (ctx, txt) => {
     return ctx.reply('broad completed no id');
   }
   const connSecond = connectDb();
-  const messages = Any.collection.conn.model('messages', Any.schema);
-  const model = connSecond.model('broadcasts', Any.schema);
+  const model = Any.collection.conn.model('broadcasts', Any.schema);
+  const messages = connSecond.model('messages', Any.schema);
   const filter = {};
   if (process.env.DEV) {
     filter.username = {$in: ['safiullin']};
   }
+  // filter.username = {$in: ['safiullin']};
   // await model.updateMany(
   //   {cId: 10, error: /:429/},
   //   {$unset: {sent: '', error: ''}},
@@ -130,12 +133,13 @@ const startBroadcast = async (ctx, txtParam, bot) => {
   let model;
   let connSecond;
 
-  if (process.env.DEV) {
-    connSecond = connectDb();
-    model = connSecond.model('broadcasts', Any.schema);
-  } else {
-    model = Any.collection.conn.model('broadcasts', Any.schema);
-  }
+  //   if (process.env.DEV) {
+  //     connSecond = connectDb();
+  //     model = connSecond.model('broadcasts', Any.schema);
+  //   } else {
+
+  //   }
+  model = Any.collection.conn.model('broadcasts', Any.schema);
 
   const filter = {sent: {$exists: false}, cId};
   const sendCmd = Mid ? 'forward' : 'sendAdmin';
@@ -163,7 +167,8 @@ const startBroadcast = async (ctx, txtParam, bot) => {
           // eslint-disable-next-line no-await-in-loop
           await runCmd();
           if (SecondMid) {
-            const runCmd2 = () => bot[sendCmd](SecondMid, FromId * (isChannel ? -1 : 1), id);
+            const runCmd2 = () =>
+              bot[sendCmd](SecondMid, FromId * (isChannel ? -1 : 1), id);
             await runCmd2();
           }
           success.push({
@@ -233,7 +238,7 @@ const clear2 = async msg => {
   const d = await linksOld1.deleteMany({url: s});
   return JSON.stringify(d);
 };
-//linksOld1
+// linksOld1
 const removeInline = url => inlineLinks.deleteMany({url});
 
 const updateOne = (item, collection = links) => {
@@ -253,7 +258,10 @@ const getFromCollection = async (url, coll, insert = true) => {
 
 const getInine = async url => {
   // check from old DB without insert
-  let me = await getFromCollection(url, inlineLinksOld1, false);
+  let me;
+  if (inlineLinksOld1) {
+    me = await getFromCollection(url, inlineLinksOld1, false);
+  }
   if (!me) {
     me = await getFromCollection(url, inlineLinks);
   }
@@ -262,7 +270,10 @@ const getInine = async url => {
 
 const getIV = async url => {
   // check from old DB without insert
-  let me = await getFromCollection(url, linksOld1, false);
+  let me;
+  if (linksOld1) {
+    me = await getFromCollection(url, linksOld1, false);
+  }
   if (!me) {
     me = await getFromCollection(url, links);
   }
