@@ -1,15 +1,18 @@
 const fs = require('fs');
-const express = require('express');
 const BotHelper = require('../utils/bot');
 const format = require('./format');
 const db = require('../utils/db');
 
 global.skipCount = 0;
 
-const router = express.Router();
 const filepath = 'count.txt';
 if (!fs.existsSync(filepath)) fs.writeFileSync(filepath, '0');
 
+const skipCountFile = '.test';
+let skipCount;
+if (fs.existsSync(skipCountFile)) {
+  skipCount = +`${fs.readFileSync(skipCountFile)}`.replace('SKIP_ITEMS=', '');
+}
 let startCnt = parseInt(`${fs.readFileSync('count.txt')}`, 10);
 const botRoute = (bot, conn) => {
   const botHelper = new BotHelper(bot.telegram);
@@ -71,13 +74,18 @@ const botRoute = (bot, conn) => {
       }
     }
   });
-  
+
   bot.command('srv', ({message}) => {
     if (botHelper.isAdmin(message.from.id)) {
       botHelper.sendAdmin(`srv: ${JSON.stringify(message)}`);
     }
   });
-
+  bot.command('/toggleDev', ({message}) => {
+    if (botHelper.isAdmin(message.from.id)) {
+      global.isDevEnabled = !global.isDevEnabled;
+      botHelper.sendAdmin(`dev is ${global.isDevEnabled}`);
+    }
+  });
   bot.command('/skipCount', ({message}) => {
     if (botHelper.isAdmin(message.from.id)) {
       if (!global.skipCount) {
@@ -87,7 +95,7 @@ const botRoute = (bot, conn) => {
     }
   });
 
-  format(bot, botHelper);
+  format(bot, botHelper, skipCount);
   bot.launch();
 
   if (startCnt % 10 === 0 || process.env.DEV) {
@@ -97,7 +105,7 @@ const botRoute = (bot, conn) => {
   if (startCnt >= 500) startCnt = 0;
 
   fs.writeFileSync(filepath, parseInt(startCnt, 10).toString());
-  return {router, bot: botHelper};
+  return {bot: botHelper};
 };
 
 module.exports = botRoute;

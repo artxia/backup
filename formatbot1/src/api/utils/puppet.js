@@ -31,11 +31,15 @@ const puppet = async (url, params) => {
   if (!ws) {
     return Promise.resolve('');
   }
+  logger('puppet start');
+  logger(new Date());
   try {
-    //logger(url);
+    logger(url);
     const browser = await puppeteer.connect({browserWSEndpoint: ws});
     const page = await browser.newPage();
-    const status = await page.goto(url, {});
+    const status = await page
+      .goto(url, {waitUntil: 'load', timeout: 30000})
+      .catch(() => page.close().then(() => page.content()));
     if (!status.ok) {
       logger('cannot open google.com');
     } else {
@@ -57,6 +61,8 @@ const puppet = async (url, params) => {
       logger('wait 2');
       const content = await page.content();
       await page.close();
+      logger('puppet end');
+      logger(new Date());
       return content;
     }
   } catch (e) {
