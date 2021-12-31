@@ -9,13 +9,13 @@ export class WorkersKV implements Storage {
       return JSON.parse(value);
     }
     return undefined;
-  }
+  };
 
   put = async <Type>(key: string, value: Type): Promise<void> => {
     await DATABASE.put(key, JSON.stringify(value));
-  }
+  };
 
   delete = async (key: string): Promise<void> => {
     await DATABASE.delete(key);
-  }
+  };
 }

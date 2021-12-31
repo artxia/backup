@@ -4,6 +4,7 @@ import { useLoadBalancing } from './load-balancing';
 import { useUpstream } from './upstream';
 import { useCORS } from './cors';
 import { useRewrite } from './rewrite';
+import { useReplace } from './replace';
 
 import { WorkersKV } from './storage';
 import { createResponse, getHostname } from './utils';
@@ -41,6 +42,7 @@ export default function useProxy(
     useCORS,
     useRewrite,
     useUpstream,
+    useReplace,
   );
 
   const routes: Route[] = [];

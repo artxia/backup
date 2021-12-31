@@ -48,10 +48,7 @@ export const randomHandler: LoadBalancingHandler = (
   return upstream[Math.floor(Math.random() * upstream.length)];
 };
 
-const handlersMap: Record<
-  LoadBalancingPolicy,
-  LoadBalancingHandler
-> = {
+const handlersMap: Record<LoadBalancingPolicy, LoadBalancingHandler> = {
   random: randomHandler,
   'ip-hash': ipHashHandler,
 };

@@ -1,9 +1,9 @@
-![Header](https://raw.githubusercontent.com/booster-labs/rocket-booster/master/.github/img/header.jpg)
+![Header](https://raw.githubusercontent.com/xiaoyang-sde/rocket-booster/master/.github/img/header.jpg)
 
 <div align="center">
 
-[![GitHub Actions](https://img.shields.io/github/workflow/status/booster-labs/rocket-booster/Node.js%20Test%20and%20Build?style=for-the-badge&logo=github)](https://github.com/booster-labs/rocket-booster/actions)
-[![Codecov Coverage](https://img.shields.io/codecov/c/github/booster-labs/rocket-booster?style=for-the-badge&logo=codecov)](https://app.codecov.io/gh/booster-labs/rocket-booster/)
+[![GitHub Actions](https://img.shields.io/github/workflow/status/xiaoyang-sde/rocket-booster/Node.js%20Test%20and%20Build?style=for-the-badge&logo=github)](https://github.com/xiaoyang-sde/rocket-booster/actions)
+[![Codecov Coverage](https://img.shields.io/codecov/c/github/xiaoyang-sde/rocket-booster?style=for-the-badge&logo=codecov)](https://app.codecov.io/gh/xiaoyang-sde/rocket-booster/)
 [![Package version](https://img.shields.io/npm/v/rocket-booster?style=for-the-badge&logo=npm&color=red)](https://www.npmjs.com/package/rocket-booster)
 [![Bundle size](https://img.shields.io/bundlephobia/min/rocket-booster?style=for-the-badge&logo=webpack)](https://www.npmjs.com/package/rocket-booster)
 
@@ -11,7 +11,7 @@
 [![forthebadge](https://forthebadge.com/images/badges/ctrl-c-ctrl-v.svg)](https://forthebadge.com)
 [![forthebadge](https://forthebadge.com/images/badges/built-with-love.svg)](https://forthebadge.com)
 
-[📦 Releases](https://github.com/booster-labs/rocket-booster/releases) |
+[📦 Releases](https://github.com/xiaoyang-sde/rocket-booster/releases) |
 [📔 Examples](#-examples) |
 [⚙️ Options](#-options) |
 [🌎 Contributing](#-contributing)
@@ -28,12 +28,12 @@
 
 ### Start with templates
 
-- [Install Wrangler CLI](https://github.com/cloudflare/wrangler#installation) and generate a project from the [rocket-booster-template](https://github.com/booster-labs/rocket-booster-template)
+- [Install Wrangler CLI](https://github.com/cloudflare/wrangler#installation) and generate a project from the [rocket-booster-template](https://github.com/xiaoyang-sde/rocket-booster-template)
 
 ```sh
 npm install -g @cloudflare/wrangler
 
-wrangler generate booster-app https://github.com/booster-labs/rocket-booster-template
+wrangler generate booster-app https://github.com/xiaoyang-sde/rocket-booster-template
 ```
 
 - Install dependencies and edit the options in `src/index.ts`

@@ -1,23 +1,18 @@
 module.exports = {
   env: {
+    node: true,
     es2021: true,
     jest: true,
-    worker: true,
-  },
-  settings: {
-    'import/resolver': {
-      node: {
-        extensions: ['.js', '.ts'],
-      },
-    },
   },
   extends: [
     'airbnb-base',
-    'plugin:@typescript-eslint/eslint-recommended',
-    'plugin:@typescript-eslint/recommended',
+    'airbnb-typescript/base',
   ],
   parser: '@typescript-eslint/parser',
   parserOptions: {
+    project: [
+      'tsconfig.json',
+    ],
     ecmaVersion: 12,
     sourceType: 'module',
   },
@@ -28,5 +23,13 @@ module.exports = {
     'no-restricted-syntax': 0,
     'import/prefer-default-export': 0,
     'import/extensions': 0,
+    'class-methods-use-this': 0,
+  },
+  settings: {
+    'import/resolver': {
+      node: {
+        extensions: ['.js', '.ts'],
+      },
+    },
   },
 };
