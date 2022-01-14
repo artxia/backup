@@ -240,7 +240,7 @@ async def bot_message_handler(event):
             min_id = max(int(download_args[1]), 1) if len(download_args) > 1 else 1
             max_id = int(download_args[2]) if len(download_args) > 2 else 1 << 31 - 1
             await event.respond('开始下载历史记录')
-            if len(download_args) == 0:
+            if len(download_args) <= 1:
                 indexer.clear()
             await download_history(min_id=min_id, max_id=max_id)
 
