@@ -364,8 +364,9 @@ async def single_sticker(animated, context, custom_emoji, emoji, message, pic_ro
                         await bot.send_read_acknowledge(conversation.chat_id)
                         await conversation.send_message(pack_name)
                         chat_response = await conversation.get_response()
-                        while chat_response.text == "Whoa! That's probably enough stickers for one pack, give it a break. \
-A pack can't have more than 120 stickers at the moment.":
+                        while chat_response.text == "Whoa! That's probably enough stickers for one set, " \
+                                                    "give it a break. " \
+                                                    "A set can't have more than 120 stickers at the moment.":
                             pack += 1
 
                             # 指定贴纸包已满时直接报错
@@ -391,7 +392,7 @@ A pack can't have more than 120 stickers at the moment.":
                                 pass
                             await conversation.send_message(pack_name)
                             chat_response = await conversation.get_response()
-                            if chat_response.text == "Invalid pack selected.":
+                            if chat_response.text == "Invalid set selected.":
                                 await add_sticker(conversation, command, pack_title, pack_name, animated, message,
                                                   context, file, emoji)
                                 try:
