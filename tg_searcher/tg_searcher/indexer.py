@@ -13,19 +13,22 @@ from jieba.analyse.analyzer import ChineseAnalyzer
 
 
 class IndexMsg:
-    # TODO: add sender to Message schema
     schema = Schema(
         content=TEXT(stored=True, analyzer=ChineseAnalyzer()),
         url=ID(stored=True, unique=True),
+        # for `chat_id` we are using TEXT instead of NUMERIC here, because NUMERIC
+        # do not support iterating all values of the field
         chat_id=TEXT(stored=True),
         post_time=DATETIME(stored=True, sortable=True),
+        sender=TEXT(stored=True),
     )
 
-    def __init__(self, content: str, url: str, chat_id: Union[int, str], post_time: datetime):
+    def __init__(self, content: str, url: str, chat_id: Union[int, str], post_time: datetime, sender: str):
         self.content = content
         self.url = url
         self.chat_id = int(chat_id)
         self.post_time = post_time
+        self.sender = sender
 
     def as_dict(self):
         return {
@@ -33,6 +36,7 @@ class IndexMsg:
             'url': self.url,
             'chat_id': str(self.chat_id),
             'post_time': self.post_time,
+            'sender': self.sender
         }
 
     def __str__(self):
@@ -76,6 +80,11 @@ class Indexer:
             if index.exists_in(index_dir, index_name) \
             else index.create_in(index_dir, IndexMsg.schema, index_name)
 
+        assert repr(self.ix.schema.names) == repr(IndexMsg.schema.names), \
+            f"Incompatible schema in your index '{index_dir}'\n" \
+            f"\tExpected: {IndexMsg.schema}\n" \
+            f"\tOn disk:  {self.ix.schema}"
+
         self._clear = _clear  # use closure to avoid introducing too much members
         self.query_parser = QueryParser('content', IndexMsg.schema)
         self.highlighter = highlight.Highlighter()
@@ -118,9 +127,10 @@ class Indexer:
     def update(self, content: str, url: str):
         with self.ix.searcher() as searcher:
             msg_dict = searcher.document(url=url)
-        with self.ix.writer() as writer:
-            msg_dict['content'] = content
-            writer.update_document(**msg_dict)
+            if msg_dict:
+                with self.ix.writer() as writer:
+                    msg_dict['content'] = content
+                    writer.update_document(**msg_dict)
 
     def clear(self):
         self._clear()

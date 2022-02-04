@@ -46,8 +46,8 @@ async def a_main():
     async_tasks = []
     for backend_yaml in full_config['backends']:
         backend_id = backend_yaml['id']
-        backend_config = BackendBotConfig(**backend_yaml['config'])
         session_name = backend_yaml['use_session']
+        backend_config = BackendBotConfig(**backend_yaml.get('config', {}))
         backend = BackendBot(common_config, backend_config, sessions[session_name], args.clear, backend_id)
         async_tasks.append(backend.start())
         if backend_id not in backends:
@@ -58,7 +58,7 @@ async def a_main():
     for frontend_yaml in full_config['frontends']:
         backend_id = frontend_yaml['use_backend']
         frontend_id = frontend_yaml['id']
-        frontend_config = BotFrontendConfig(**frontend_yaml['config'])
+        frontend_config = BotFrontendConfig(**frontend_yaml.get('config', {}))
         frontend = BotFrontend(common_config, frontend_config,
                                frontend_id=frontend_id, backend=backends[backend_id])
         async_tasks.append(frontend.start())
@@ -77,6 +77,3 @@ async def a_main():
 
 def main():
     asyncio.run(a_main())
-
-
-main()
