@@ -1,11 +1,5 @@
-import {
-  useLoadBalancing,
-  ipHashHandler,
-  randomHandler,
-} from '../src/load-balancing';
-import { UpstreamOptions } from '../types/upstream';
-import { Context } from '../types/middleware';
-import { WorkersKV } from '../src/storage';
+import useReflare from '../src';
+import { UpstreamOptions } from '../types/middlewares';
 
 const upstreamArray: UpstreamOptions[] = [
   {
@@ -26,7 +20,7 @@ const upstreamArray: UpstreamOptions[] = [
 ];
 
 const request = new Request(
-  'https://httpbin.org/get',
+  'https://localhost/get',
   {
     headers: new Headers({
       host: 'github.com',
@@ -37,48 +31,32 @@ const request = new Request(
   },
 );
 
-test('load-balancing.ts -> useLoadBalancing()', async () => {
-  const context: Context = {
-    request,
-    response: new Response(),
-    hostname: 'https://github.com',
-    upstream: null,
-    storage: new WorkersKV(),
-    options: {
-      upstream: upstreamArray,
-      loadBalancing: {
-        policy: 'ip-hash',
-      },
+test('load-balancing.ts -> ip-hash', async () => {
+  const reflare = await useReflare();
+  reflare.push({
+    path: '/*',
+    upstream: upstreamArray,
+    loadBalancing: {
+      policy: 'ip-hash',
     },
-  };
+  });
 
-  await useLoadBalancing(context, () => null);
-  if (context.upstream === null) {
-    throw Error('Failed to select the upstream service.');
-  }
-  expect(context.upstream.domain).toEqual('httpbin.org');
+  const response = await reflare.handle(request);
+  expect(response.status).toBe(200);
+  expect(response.url).toBe('https://httpbin.org/get');
 });
 
-test('load-balancing.ts -> ipHashHandler()', () => {
-  const upstream = ipHashHandler(
-    upstreamArray,
-    request,
-  );
-  expect(upstream.domain).toEqual('httpbin.org');
-});
+test('load-balancing.ts -> weighted random', async () => {
+  const reflare = await useReflare();
+  reflare.push({
+    path: '/*',
+    upstream: upstreamArray,
+    loadBalancing: {
+      policy: 'random',
+    },
+  });
 
-test('load-balancing.ts -> randomHandler()', () => {
-  const upstream = randomHandler(
-    upstreamArray,
-    request,
-  );
-  expect(upstream.domain).toBeTruthy();
-});
-
-test('load-balancing.ts ->  randomHandler() | weighted', () => {
-  const upstream = randomHandler(
-    upstreamArray,
-    request,
-  );
-  expect(upstream.domain).toEqual('httpbin.org');
+  const response = await reflare.handle(request);
+  expect(response.status).toBe(200);
+  expect(response.url).toBe('https://httpbin.org/get');
 });

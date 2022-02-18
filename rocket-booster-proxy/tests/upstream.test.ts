@@ -1,34 +1,17 @@
-import { cloneRequest, getURL } from '../src/upstream';
+import useReflare from '../src';
 
-test('upstream.ts -> cloneRequest()', () => {
+test('upstream -> basic', async () => {
   const request = new Request(
-    'https://httpbin.org/get',
-    {
-      headers: new Headers({
-        host: 'https://httpbin.org',
-      }),
-      method: 'GET',
-    },
+    'https://localhost/get',
   );
 
-  const clonedRequest = cloneRequest(
-    'https://example.com/',
-    request,
-  );
+  const reflare = await useReflare();
+  reflare.push({
+    path: '/*',
+    upstream: { domain: 'httpbin.org' },
+  });
 
-  expect(clonedRequest.url).toEqual('https://example.com/');
-  expect(clonedRequest.method).toEqual('GET');
-  expect(clonedRequest.headers.get('host')).toEqual('https://httpbin.org');
-});
-
-test('upstream.ts -> getURL()', () => {
-  const url = getURL(
-    'https://httpbin.org/test',
-    {
-      domain: 'example.com',
-      protocol: 'http',
-      port: 1080,
-    },
-  );
-  expect(url).toEqual('http://example.com:1080/test');
+  const response = await reflare.handle(request);
+  expect(response.status).toBe(200);
+  expect(response.url).toBe('https://httpbin.org/get');
 });

@@ -1,6 +1,6 @@
-import { Middleware } from '../types/middleware';
-import { UpstreamOptions } from '../types/upstream';
-import { LoadBalancingHandler, LoadBalancingPolicy } from '../types/load-balancing';
+import { Middleware } from '../../types/middleware';
+import { UpstreamOptions } from '../../types/middlewares/upstream';
+import { LoadBalancingHandler, LoadBalancingPolicy } from '../../types/middlewares/load-balancing';
 
 const validateUpstream = (
   upstream: UpstreamOptions,
@@ -53,12 +53,18 @@ const handlersMap: Record<LoadBalancingPolicy, LoadBalancingHandler> = {
   'ip-hash': ipHashHandler,
 };
 
+/**
+ * The `useLoadBalancing` middleware picks an upstream server based on the load
+ * balancing policy.
+ * @param context - The context of the middleware pipeline
+ * @param next - The function to invoke the next middleware in the pipeline
+ */
 export const useLoadBalancing: Middleware = async (
   context,
   next,
 ) => {
-  const { request, options } = context;
-  const { upstream, loadBalancing } = options;
+  const { request, route } = context;
+  const { upstream, loadBalancing } = route;
 
   if (upstream === undefined) {
     throw new Error('The required \'upstream\' field in the option object is missing');

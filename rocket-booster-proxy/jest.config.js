@@ -1,7 +1,11 @@
 module.exports = {
+  testEnvironment: 'miniflare',
+  testEnvironmentOptions: {
+    script: '',
+  },
   preset: 'ts-jest',
-  setupFilesAfterEnv: [
-    '<rootDir>/tests/setup.ts',
-  ],
   collectCoverage: true,
+  testPathIgnorePatterns: [
+    'dist',
+  ],
 };

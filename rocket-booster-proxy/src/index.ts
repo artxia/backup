@@ -1,78 +1,95 @@
-import { useFirewall } from './firewall';
-import { useHeaders } from './headers';
-import { useLoadBalancing } from './load-balancing';
-import { useUpstream } from './upstream';
-import { useCORS } from './cors';
-import { useRewrite } from './rewrite';
-import { useReplace } from './replace';
-
-import { WorkersKV } from './storage';
-import { createResponse, getHostname } from './utils';
+import {
+  useCORS,
+  useFirewall,
+  useHeaders,
+  useLoadBalancing,
+  useUpstream,
+} from './middlewares';
+import { WorkersKV } from './database';
 import { usePipeline } from './middleware';
+import { createResponse, getHostname } from './utils';
 
-import { Proxy, Options, Route } from '../types/proxy';
+import {
+  Reflare,
+  Route,
+  RouteList,
+  Options,
+} from '../types';
 import { Context } from '../types/middleware';
 
 const filter = (
   request: Request,
-  routes: Route[],
-): Options | null => {
+  routeList: RouteList,
+): Route | void => {
   const url = new URL(request.url);
-  for (const { pattern, options } of routes) {
+  for (const route of routeList) {
     if (
-      options.methods === undefined
-      || options.methods.includes(request.method)
+      route.methods === undefined
+      || route.methods.includes(request.method)
     ) {
-      const regex = new RegExp(`^${pattern.replace(/\*/g, '.*')}`);
-      if (regex.test(url.pathname)) {
-        return options;
+      const re = RegExp(
+        `^${
+          route.path
+            .replace(/(\/?)\*/g, '($1.*)?')
+            .replace(/\/$/, '')
+            .replace(/:(\w+)(\?)?(\.)?/g, '$2(?<$1>[^/]+)$2$3')
+            .replace(/\.(?=[\w(])/, '\\.')
+            .replace(/\)\.\?\(([^[]+)\[\^/g, '?)\\.?($1(?<=\\.)[^\\.')
+        }/*$`,
+      );
+      if (url.pathname.match(re)) {
+        return route;
       }
     }
   }
-  return null;
+  return undefined;
 };
 
-export default function useProxy(
-  globalOptions?: Partial<Options>,
-): Proxy {
+const defaultOptions: Options = {
+  provider: 'static',
+  routeList: [],
+};
+
+const useReflare = async (
+  options: Options = defaultOptions,
+): Promise<Reflare> => {
   const pipeline = usePipeline(
     useFirewall,
     useLoadBalancing,
     useHeaders,
     useCORS,
-    useRewrite,
     useUpstream,
-    useReplace,
   );
 
-  const routes: Route[] = [];
-  const use = (
-    pattern: string,
-    options: Options,
-  ) => {
-    routes.push({
-      pattern,
-      options: {
-        ...globalOptions,
-        ...options,
-      },
-    });
-  };
+  const routeList: RouteList = [];
 
-  const apply = async (
+  if (options.provider === 'static') {
+    for (const route of options.routeList) {
+      routeList.push(route);
+    }
+  }
+
+  if (options.provider === 'kv') {
+    const database = new WorkersKV(options.namespace);
+    const routeListKV = await database.get<RouteList>('route-list') || [];
+    for (const routeKV of routeListKV) {
+      routeList.push(routeKV);
+    }
+  }
+
+  const handle = async (
     request: Request,
   ): Promise<Response> => {
-    const options = filter(request, routes);
-    if (options === null) {
+    const route = filter(request, routeList);
+    if (route === undefined) {
       return createResponse('Failed to find a route that matches the path and method of the current request', 500);
     }
 
     const context: Context = {
       request,
-      options,
+      route,
       hostname: getHostname(request),
       response: new Response('Unhandled response'),
-      storage: new WorkersKV(),
       upstream: null,
     };
 
@@ -86,8 +103,23 @@ export default function useProxy(
     return context.response;
   };
 
-  return {
-    use,
-    apply,
+  const unshift = (
+    route: Route,
+  ) => {
+    routeList.unshift(route);
   };
-}
+
+  const push = (
+    route: Route,
+  ) => {
+    routeList.push(route);
+  };
+
+  return {
+    handle,
+    unshift,
+    push,
+  };
+};
+
+export default useReflare;

@@ -3,8 +3,8 @@ import {
   FirewallOperator,
   FirewallHandler,
   FirewallOptions,
-} from '../types/firewall';
-import { Middleware } from '../types/middleware';
+} from '../../types/middlewares/firewall';
+import { Middleware } from '../../types/middleware';
 
 const fields: Set<FirewallField> = new Set([
   'country',
@@ -173,18 +173,24 @@ const operatorsMap: Record<FirewallOperator, FirewallHandler> = {
   'not in': notInOperator,
 };
 
+/**
+ * The `useFirewall` middleware inspects the request and blocks the request if
+ * it matches one of the firewall rules.
+ * @param context - The context of the middleware pipeline
+ * @param next - The function to invoke the next middleware in the pipeline
+ */
 export const useFirewall: Middleware = async (
   context,
   next,
 ) => {
-  const { request, options } = context;
-  if (options.firewall === undefined) {
+  const { request, route } = context;
+  if (route.firewall === undefined) {
     await next();
     return;
   }
-  options.firewall.forEach(validateFirewall);
+  route.firewall.forEach(validateFirewall);
 
-  for (const { field, operator, value } of options.firewall) {
+  for (const { field, operator, value } of route.firewall) {
     const fieldParam = getFieldParam(
       request,
       field,

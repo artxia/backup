@@ -1,13 +1,11 @@
-import { Options } from './proxy';
-import { UpstreamOptions } from './upstream';
-import { Storage } from './storage';
+import { Route } from '.';
+import { UpstreamOptions } from './middlewares/upstream';
 
 export interface Context {
+  route: Route;
   hostname: string;
   request: Request;
   response: Response;
-  options: Options;
-  storage: Storage;
   upstream: UpstreamOptions | null;
 }
 

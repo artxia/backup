@@ -1,9 +1,12 @@
-import { useCORS } from '../src/cors';
-import { WorkersKV } from '../src/storage';
-import { Context } from '../types/middleware';
+import useReflare from '../src';
+
+interface HTTPBinGetResponse {
+  headers: Record<string, string>;
+  origin: string;
+}
 
 const request = new Request(
-  'https://httpbin.org/post',
+  'https://httpbin.org/get',
   {
     headers: new Headers({
       origin: 'https://httpbin.org',
@@ -13,223 +16,78 @@ const request = new Request(
   },
 );
 
-const response = new Response(
-  'Test response body',
-  {
-    headers: new Headers({}),
-    status: 200,
-  },
-);
-
-const baseContext: Context = {
-  request,
-  response,
-  hostname: 'https://httpbin.org',
-  upstream: null,
-  storage: new WorkersKV(),
-  options: {
-    upstream: {
-      domain: 'httpbin.org',
+test('CORS -> methods', async () => {
+  const reflare = await useReflare();
+  reflare.push({
+    path: '/*',
+    upstream: { domain: 'httpbin.org' },
+    cors: {
+      origin: ['https://httpbin.org'],
+      methods: ['GET', 'POST'],
     },
-  },
-};
-
-describe('cors.ts -> useCORS()', () => {
-  test('undefined options', async () => {
-    const context: Context = {
-      ...baseContext,
-      options: {
-        upstream: {
-          domain: 'httpbin.org',
-        },
-      },
-    };
-    await useCORS(context, () => null);
-    expect(context.response).toBe(response);
   });
 
-  test('Access-Control-Max-Age (Invalid)', async () => {
-    const context: Context = {
-      ...baseContext,
-      options: {
-        upstream: {
-          domain: 'httpbin.org',
-        },
-        cors: {
-          origin: true,
-          maxAge: 86400.5,
-        },
-      },
-    };
-    await useCORS(context, () => null);
-    expect(context.response.headers.has('Access-Control-Max-Age')).toBeFalsy();
+  const response = await reflare.handle(request);
+  expect(response.status).toBe(200);
+  const responseObject = await response.json<HTTPBinGetResponse>();
+  expect(responseObject.headers.Origin).toBe('https://httpbin.org');
+  expect(response.headers.get('Access-Control-Allow-Methods')).toBe('GET,POST');
+});
+
+test('CORS -> Max Age', async () => {
+  const reflare = await useReflare();
+  reflare.push({
+    path: '/*',
+    upstream: { domain: 'httpbin.org' },
+    cors: {
+      origin: true,
+      maxAge: 3600,
+    },
   });
 
-  test('Access-Control-Max-Age (Valid)', async () => {
-    const context: Context = {
-      ...baseContext,
-      options: {
-        upstream: {
-          domain: 'httpbin.org',
-        },
-        cors: {
-          origin: true,
-          maxAge: 86400,
-        },
-      },
-    };
-    await useCORS(context, () => null);
-    expect(context.response.headers.get('Access-Control-Max-Age')).toEqual('86400');
+  const response = await reflare.handle(request);
+  expect(response.headers.get('access-control-max-age')).toBe('3600');
+});
+
+test('CORS -> Access-Control-Allow-Credentials', async () => {
+  const reflare = await useReflare();
+  reflare.push({
+    path: '/*',
+    upstream: { domain: 'httpbin.org' },
+    cors: {
+      origin: true,
+      credentials: true,
+    },
   });
 
-  test('Access-Control-Allow-Credentials: false', async () => {
-    const context: Context = {
-      ...baseContext,
-      options: {
-        upstream: {
-          domain: 'httpbin.org',
-        },
-        cors: {
-          origin: true,
-          credentials: false,
-        },
-      },
-    };
-    await useCORS(context, () => null);
-    expect(context.response.headers.has('Access-Control-Allow-Credentials')).toBeFalsy();
+  const response = await reflare.handle(request);
+  expect(response.headers.has('Access-Control-Allow-Credentials')).toBeTruthy();
+});
+
+test('CORS -> Access-Control-Allow-Origin', async () => {
+  const reflare = await useReflare();
+  reflare.push({
+    path: '/*',
+    upstream: { domain: 'httpbin.org' },
+    cors: {
+      origin: true,
+    },
   });
 
-  test('Access-Control-Allow-Credentials: true', async () => {
-    const context: Context = {
-      ...baseContext,
-      options: {
-        upstream: {
-          domain: 'httpbin.org',
-        },
-        cors: {
-          origin: true,
-          credentials: true,
-        },
-      },
-    };
-    await useCORS(context, () => null);
-    expect(context.response.headers.get('Access-Control-Allow-Credentials')).toEqual('true');
+  const response = await reflare.handle(request);
+  expect(response.headers.has('Access-Control-Allow-Origin')).toBeTruthy();
+});
+
+test('CORS -> Access-Control-Allow-Origin wildcard', async () => {
+  const reflare = await useReflare();
+  reflare.push({
+    path: '/*',
+    upstream: { domain: 'httpbin.org' },
+    cors: {
+      origin: '*',
+    },
   });
 
-  test('Access-Control-Allow-Methods: undefined', async () => {
-    const context: Context = {
-      ...baseContext,
-      options: {
-        upstream: {
-          domain: 'httpbin.org',
-        },
-        cors: {
-          origin: true,
-        },
-      },
-    };
-    await useCORS(context, () => null);
-    expect(context.response.headers.get('Access-Control-Allow-Methods')).toEqual('GET');
-  });
-
-  test('Access-Control-Allow-Methods: array', async () => {
-    const context: Context = {
-      ...baseContext,
-      options: {
-        upstream: {
-          domain: 'httpbin.org',
-        },
-        cors: {
-          origin: true,
-          methods: ['GET', 'POST', 'OPTIONS'],
-        },
-      },
-    };
-    await useCORS(context, () => null);
-    expect(context.response.headers.get('Access-Control-Allow-Methods')).toEqual('GET,POST,OPTIONS');
-  });
-
-  test('Access-Control-Allow-Methods: wildcard', async () => {
-    const context: Context = {
-      ...baseContext,
-      options: {
-        upstream: {
-          domain: 'httpbin.org',
-        },
-        cors: {
-          origin: true,
-          methods: '*',
-        },
-      },
-    };
-    await useCORS(context, () => null);
-    expect(context.response.headers.get('Access-Control-Allow-Methods')).toEqual('*');
-  });
-
-  test('Access-Control-Allow-Origin: true', async () => {
-    const context: Context = {
-      ...baseContext,
-      options: {
-        upstream: {
-          domain: 'httpbin.org',
-        },
-        cors: {
-          origin: true,
-        },
-      },
-    };
-    await useCORS(context, () => null);
-    expect(context.response.headers.get('Access-Control-Allow-Origin')).toEqual('https://httpbin.org');
-  });
-
-  test('Access-Control-Allow-Origin: false', async () => {
-    const context: Context = {
-      ...baseContext,
-      options: {
-        upstream: {
-          domain: 'httpbin.org',
-        },
-        cors: {
-          origin: false,
-        },
-      },
-    };
-    await useCORS(context, () => null);
-    expect(context.response.headers.has('Access-Control-Allow-Origin')).toBeFalsy();
-  });
-
-  test('Access-Control-Allow-Origin: array', async () => {
-    const context: Context = {
-      ...baseContext,
-      options: {
-        upstream: {
-          domain: 'httpbin.org',
-        },
-        cors: {
-          origin: [
-            'https://httpbin.org',
-            'http://example.com',
-          ],
-        },
-      },
-    };
-    await useCORS(context, () => null);
-    expect(context.response.headers.get('Access-Control-Allow-Origin')).toEqual('https://httpbin.org');
-  });
-
-  test('Access-Control-Allow-Origin: wildcard', async () => {
-    const context: Context = {
-      ...baseContext,
-      options: {
-        upstream: {
-          domain: 'httpbin.org',
-        },
-        cors: {
-          origin: '*',
-        },
-      },
-    };
-    await useCORS(context, () => null);
-    expect(context.response.headers.get('Access-Control-Allow-Origin')).toEqual('*');
-  });
+  const response = await reflare.handle(request);
+  expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
 });

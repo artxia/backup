@@ -1,63 +1,84 @@
-import {
-  setForwardedHeaders,
-  useHeaders,
-} from '../src/headers';
-import { WorkersKV } from '../src/storage';
-import { Context } from '../types/middleware';
+import useReflare from '../src';
 
-test('headers.ts -> setForwardedHeaders()', () => {
-  const request = new Request(
-    'https://httpbin.org/get',
-    {
-      headers: new Headers({
-        host: 'https://httpbin.org',
-        'cf-connecting-ip': '1.1.1.1',
-        'X-Forwarded-For': '127.0.0.1, 127.0.0.2',
-      }),
-      method: 'GET',
-    },
-  );
+interface HTTPBinGetResponse {
+  headers: Record<string, string>;
+  origin: string;
+}
 
-  setForwardedHeaders(request.headers);
-  expect(request.headers.get('X-Forwarded-Proto')).toEqual('https');
-  expect(request.headers.get('X-Forwarded-Host')).toEqual('https://httpbin.org');
-  expect(request.headers.get('X-Forwarded-For')).toEqual('127.0.0.1, 127.0.0.2');
+const request = new Request(
+  'https://localhost/get',
+  {
+    headers: new Headers({
+      host: 'github.com',
+      'cf-connecting-ip': '1.1.1.1',
+      'user-agent': 'Mozilla/5.0',
+    }),
+    method: 'GET',
+  },
+);
+
+test('headers.ts -> X-Forwarded headers', async () => {
+  const reflare = await useReflare();
+
+  reflare.push({
+    path: '/*',
+    upstream: { domain: 'httpbin.org' },
+  });
+
+  const response = await reflare.handle(request);
+  const requestInfo = await response.json<HTTPBinGetResponse>();
+  expect(requestInfo.headers['X-Forwarded-Host']).toMatch('github.com');
+  expect(requestInfo.origin).toMatch(/(1.1.1.1)/i);
 });
 
-test('headers.ts -> useHeaders()', async () => {
-  const context: Context = {
-    request: new Request(
-      'https://httpbin.org/get',
-      {
-        headers: new Headers({
-          'cf-connecting-ip': '1.1.1.1',
-        }),
-        method: 'GET',
+test('headers.ts -> request header', async () => {
+  const reflare = await useReflare();
+
+  reflare.push({
+    path: '/*',
+    upstream: { domain: 'httpbin.org' },
+    headers: {
+      request: {
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Cache-Control': 'max-age=100',
       },
-    ),
-    response: new Response(),
-    hostname: 'https://httpbin.org',
-    upstream: null,
-    storage: new WorkersKV(),
-    options: {
-      upstream: {
-        domain: 'httpbin.org',
-      },
-      headers: {
-        request: {
-          'X-Test': 'Test request header',
-          'X-Forwarded-For': 'Test override',
-        },
-        response: {
-          'X-Test': 'Test response header',
-        },
+      response: {
+        'x-response-header': 'Hello from reflare',
       },
     },
-  };
+  });
 
-  await useHeaders(context, () => null);
+  const response = await reflare.handle(request);
+  const requestInfo = await response.json<HTTPBinGetResponse>();
+  expect(requestInfo.headers['Accept-Encoding']).toMatch('gzip, deflate, br');
+  expect(requestInfo.headers.Accept)
+    .toMatch('text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8');
+  expect(requestInfo.headers['Cache-Control']).toMatch('max-age=100');
+});
 
-  expect(context.request.headers.get('X-Test')).toEqual('Test request header');
-  expect(context.request.headers.get('X-Forwarded-For')).toEqual('Test override');
-  expect(context.response.headers.get('X-Test')).toEqual('Test response header');
+test('headers.ts -> response header', async () => {
+  const reflare = await useReflare();
+  reflare.push({
+    path: '/*',
+    upstream: { domain: 'httpbin.org' },
+    headers: {
+      request: {
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Cache-Control': 'max-age=100',
+      },
+      response: {
+        'x-response-header': 'Hello from reflare',
+        Connection: 'keep-alive',
+        'Content-Type': 'application/json',
+      },
+    },
+  });
+
+  const response = await reflare.handle(request);
+  expect(response.status).toBe(200);
+  expect(response.headers.get('x-response-header')).toMatch('Hello from reflare');
+  expect(response.headers.get('connection')).toMatch('keep-alive');
+  expect(response.headers.get('content-type')).toMatch('application/json');
 });

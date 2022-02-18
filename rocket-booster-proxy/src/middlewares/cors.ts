@@ -1,14 +1,20 @@
-import { Middleware } from '../types/middleware';
+import { Middleware } from '../../types/middleware';
 
+/**
+ * The `useCORS` middleware modifies the HTTP headers related to CORS
+ * (Cross-Origin Resource Sharing) on the response.
+ * @param context - The context of the middleware pipeline
+ * @param next - The function to invoke the next middleware in the pipeline
+ */
 export const useCORS: Middleware = async (
   context,
   next,
 ) => {
   await next();
 
-  const { request, response, options } = context;
+  const { request, response, route } = context;
 
-  const corsOptions = options.cors;
+  const corsOptions = route.cors;
   if (corsOptions === undefined) {
     return;
   }
