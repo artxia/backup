@@ -19,14 +19,14 @@ from asyncio.subprocess import PIPE
 from telethon.errors import UserNotParticipantError
 from telethon.tl.types import Channel, ChannelParticipantAdmin, ChannelParticipantCreator
 from youtube_dl import YoutubeDL
-from pagermaid import module_dir, bot, lang_dict, alias_dict, user_bot, config, proxy_addr, proxy_port, http_addr, \
+from pagermaid import module_dir, bot, alias_dict, user_bot, config, proxy_addr, proxy_port, http_addr, \
     http_port
+from pagermaid import language
 
 
 def lang(text: str) -> str:
     """ i18n """
-    result = lang_dict.get(text, text)
-    return result
+    return language.get(text)
 
 
 def alias_command(command: str) -> str:
@@ -38,7 +38,7 @@ def alias_command(command: str) -> str:
     return command
 
 
-async def upload_attachment(file_path, chat_id, reply_id, caption=None, preview=None, document=None):
+async def upload_attachment(file_path, chat_id, reply_id, caption=None, preview=None, document=None, thumb=None):
     """ Uploads a local attachment file. """
     if not exists(file_path):
         return False
@@ -49,7 +49,8 @@ async def upload_attachment(file_path, chat_id, reply_id, caption=None, preview=
             reply_to=reply_id,
             caption=caption,
             link_preview=preview,
-            force_document=document
+            force_document=document,
+            thumb=thumb,
         )
     except BaseException as exception:
         raise exception
