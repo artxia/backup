@@ -24,7 +24,8 @@
         "action_invalid": "操作不合法",
         "flood_wait_prompt": "你的操作太快了，导致 bot 超过了 Telegram 的速率限制，请慢一点。",
         "edit_conflict_prompt": "你的操作太快了，导致操作冲突，请慢一点。",
-        "callback_already_running_prompt": "你已经请求过其它命令，请等待它完成后重试。"
+        "callback_already_running_prompt": "你已经请求过其它命令，请等待它完成后重试。",
+        "message_too_long_prompt": "命令应已成功执行，但返回消息太长了，无法发送。"
     },
     "l10n_permission_denied_reasons": {
         "permission_denied_not_bot_manager": "此命令只可由机器人的管理员使用。",
@@ -36,10 +37,17 @@
         "group_upgrade_needed_prompt": "哎呀，你的群组还没有被升级为一个超级群组。通常，Telegram 的服务器会在某个时候自动完成这个升级，但如果没有的话，你就不得不在使用这个 bot 之前手动升级它。\n请按以下步骤操作：\n1. 转到群组信息，点击「管理群组」\n2. 将「历史记录对新成员」设置为「可见」\n3. 保存历史记录可见性设置\n4. 保存所有设置\n5. (可选) 如果需要的话，你可以将「历史记录对新成员」重新设置为「不可见」\n6. 现在你应该可以使用这个 bot 了"
     },
     "l10n_misc": {
+        "choose_sub_prompt": "请选择订阅",
+        "previous_page": "上一页",
+        "next_page": "下一页",
+        "back": "返回",
         "subscribe": "添加订阅",
         "unsubscribe": "退订订阅",
         "subscription_list": "订阅列表",
-        "processing": "正在处理中，请稍候…"
+        "processing": "正在处理中，请稍候…",
+        "cancel": "取消",
+        "canceled_by_user": "被用户取消。",
+        "n_subscriptions_in_total": "总共 %d 个订阅"
     },
     "l10n_cmd_sub": {
         "sub_reply_feed_url_prompt_html": "请回复订阅链接。\n或者，你也可以使用 <code>/sub url1 url2 url3 …</code> 来批量订阅。",
@@ -70,12 +78,6 @@
         "monitor_interval": "检查间隔",
         "set_interval_prompt": "请选择检查间隔。"
     },
-    "l10n_choose_sub": {
-        "choose_sub_prompt": "请选择订阅",
-        "previous_page": "上一页",
-        "next_page": "下一页",
-        "back": "返回"
-    },
     "l10n_sub_info": {
         "subscription_info": "订阅信息",
         "subscription_title": "订阅标题",
@@ -86,12 +88,12 @@
     },
     "l10n_cmd_activate": {
         "choose_sub_to_be_activated": "以下订阅处于停用状态，请选择你需要启用的订阅。\n启用后，会监控订阅更新。",
-        "activate_all_subs": "启用我的全部订阅",
+        "activate_all_subs": "启用我的所有订阅",
         "all_subs_are_activated": "所有订阅都已启用。"
     },
     "l10n_cmd_deactivate": {
         "choose_sub_to_be_deactivated": "以下订阅处于启用状态，请选择你需要停用的订阅。\n停用后，会暂停监控订阅更新；如果您永远不再需要这个订阅，请考虑退订而不是停用它。",
-        "deactivate_all_subs": "停用我的全部订阅",
+        "deactivate_all_subs": "停用我的所有订阅",
         "all_subs_are_deactivated": "所有订阅都已停用。"
     },
     "l10n_administration": {
@@ -119,5 +121,11 @@
         "cmd_description_help": "查看帮助",
         "cmd_description_test": "测试 (仅 bot 管理员)",
         "cmd_description_set_option": "更改 bot 配置 (仅 bot 管理员)"
+    },
+    "l10n_cmd_unsub_all": {
+        "unsub_all_successful": "成功退订所有订阅",
+        "unsub_all_confirm_prompt": "你确定要退订所有订阅吗？",
+        "unsub_all_confirm": "是的，退订所有订阅",
+        "unsub_all_cancel": "不，取消"
     }
 }

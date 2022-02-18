@@ -1,11 +1,12 @@
 from typing import Union, Optional
 from telethon import events, Button
+from telethon.tl import types
 from telethon.tl.patched import Message
-from asyncio import sleep
 
 from src.i18n import i18n
 from . import inner
-from .utils import command_gatekeeper, parse_command, escape_html, parse_callback_data_with_page
+from .utils import command_gatekeeper, parse_command, escape_html, parse_callback_data_with_page, \
+    send_success_and_failure_msg
 
 
 @command_gatekeeper(only_manager=False)
@@ -13,9 +14,11 @@ async def cmd_sub(event: Union[events.NewMessage.Event, Message], *_, lang: Opti
     args = parse_command(event.raw_text)
     filtered_urls = inner.utils.filter_urls(args)
 
+    prompt = (i18n[lang]['sub_reply_feed_url_prompt_html'] if not event.is_channel or event.is_group
+              else i18n[lang]['sub_usage_in_channel_html'])
+
     if not filtered_urls:
-        await event.respond(i18n[lang]['sub_reply_feed_url_prompt_html'] if not event.is_channel or event.is_group
-                            else i18n[lang]['sub_usage_in_channel_html'],
+        await event.respond(prompt,
                             parse_mode='html',
                             buttons=Button.force_reply(single_use=True,
                                                        selective=True,
@@ -28,11 +31,10 @@ async def cmd_sub(event: Union[events.NewMessage.Event, Message], *_, lang: Opti
     sub_result = await inner.sub.subs(event.chat_id, filtered_urls, lang=lang, bypass_url_filter=True)
 
     if sub_result is None:
-        await msg.edit(i18n[lang]['sub_reply_feed_url_prompt_html'],
-                       parse_mode='html')
+        await msg.edit(prompt, parse_mode='html')
         return
 
-    await msg.edit(sub_result["msg"], parse_mode='html')
+    await send_success_and_failure_msg(msg, **sub_result, lang=lang, edit=True)
 
 
 @command_gatekeeper(only_manager=False)
@@ -50,21 +52,49 @@ async def cmd_unsub(event: Union[events.NewMessage.Event, Message], *_, lang: Op
                             parse_mode='html')
         return
 
-    await event.respond(unsub_result['msg'], parse_mode='html')
+    await send_success_and_failure_msg(event, **unsub_result, lang=lang, edit=False)
 
 
 @command_gatekeeper(only_manager=False)
-async def cmd_unsub_all(event: Union[events.NewMessage.Event, Message], *_, lang: Optional[str] = None, **__):
-    unsub_all_result = await inner.sub.unsub_all(event.chat_id)
-    await event.respond(unsub_all_result['msg'] if unsub_all_result else i18n[lang]['no_subscription'],
-                        parse_mode='html')
+async def cmd_or_callback_unsub_all(event: Union[events.NewMessage.Event, Message, events.CallbackQuery.Event],
+                                    *_,
+                                    lang: Optional[str] = None,
+                                    **__):  # command = /unsub_all, callback data = unsub_all
+    is_callback = isinstance(event, events.CallbackQuery.Event)
+    user_id = event.chat_id
+    if is_callback:
+        backup_file = await inner.sub.export_opml(user_id)
+        if backup_file is None:
+            await event.respond(i18n[lang]['no_subscription'])
+            return
+        await event.respond(
+            file=backup_file,
+            attributes=(
+                types.DocumentAttributeFilename(f"RSStT_unsub_all_backup.opml"),
+            )
+        )
+
+        unsub_all_result = await inner.sub.unsub_all(user_id)
+        await send_success_and_failure_msg(event, **unsub_all_result, lang=lang, edit=True)
+        return
+
+    if await inner.utils.have_subs(user_id):
+        await event.respond(
+            i18n[lang]['unsub_all_confirm_prompt'],
+            buttons=[
+                [Button.inline(i18n[lang]['unsub_all_confirm'], data='unsub_all')],
+                [Button.inline(i18n[lang]['unsub_all_cancel'], data='cancel')]
+            ]
+        )
+        return
+    await event.respond(i18n[lang]['no_subscription'])
 
 
 @command_gatekeeper(only_manager=False)
 async def cmd_list_or_callback_get_list_page(event: Union[events.NewMessage.Event, Message, events.CallbackQuery.Event],
                                              *_,
                                              lang: Optional[str] = None,
-                                             **__):
+                                             **__):  # command = /list, callback data = get_list_page_{page_number}
     is_callback = isinstance(event, events.CallbackQuery.Event)
     if is_callback:
         page_number, _ = parse_callback_data_with_page(event.data)

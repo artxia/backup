@@ -30,10 +30,10 @@ async def sub(user_id: int, feed_url: str, lang: Optional[str] = None) -> dict[s
         if feed:
             _sub = await db.Sub.get_or_none(user=user_id, feed=feed)
         if not feed or feed.state == 0:
-            wf = await web.feed_get(feed_url, lang=lang)
+            wf = await web.feed_get(feed_url)
             rss_d = wf.rss_d
             ret['status'] = wf.status
-            ret['msg'] = wf.msg
+            ret['msg'] = wf.error and wf.error.i18n_message(lang)
             feed_url_original = feed_url
             ret['url'] = feed_url = wf.url  # get the redirected url
 
@@ -92,16 +92,25 @@ async def subs(user_id: int,
     success = tuple(sub_d for sub_d in result if sub_d['sub'])
     failure = tuple(sub_d for sub_d in result if not sub_d['sub'])
 
-    msg = (
+    success_msg = (
             (f'<b>{i18n[lang]["sub_successful"]}</b>\n' if success else '')
             + '\n'.join(f'<a href="{sub_d["sub"].feed.link}">{escape_html(sub_d["sub"].feed.title)}</a>'
                         for sub_d in success)
-            + ('\n\n' if success and failure else '')
-            + (f'<b>{i18n[lang]["sub_failed"]}</b>\n' if failure else '')
+    )
+    failure_msg = (
+            (f'<b>{i18n[lang]["sub_failed"]}</b>\n' if failure else '')
             + '\n'.join(f'{escape_html(sub_d["url"])} ({sub_d["msg"]})' for sub_d in failure)
     )
 
-    ret = {'sub_d_l': result, 'msg': msg}
+    msg = (
+            success_msg
+            + ('\n\n' if success and failure else '')
+            + failure_msg
+    )
+
+    ret = {'sub_d_l': result, 'msg': msg,
+           'success_count': len(success), 'failure_count': len(failure),
+           'success_msg': success_msg, 'failure_msg': failure_msg}
 
     return ret
 
@@ -163,16 +172,24 @@ async def unsubs(user_id: int,
     success = tuple(unsub_d for unsub_d in result if unsub_d['sub'])
     failure = tuple(unsub_d for unsub_d in result if not unsub_d['sub'])
 
-    msg = (
+    success_msg = (
             (f'<b>{i18n[lang]["unsub_successful"]}</b>\n' if success else '')
             + '\n'.join(f'<a href="{sub_d["sub"].feed.link}">{escape_html(sub_d["sub"].feed.title)}</a>'
                         for sub_d in success)
-            + ('\n\n' if success and failure else '')
-            + (f'<b>{i18n[lang]["unsub_failed"]}</b>\n' if failure else '')
+    )
+    failure_msg = (
+            (f'<b>{i18n[lang]["unsub_failed"]}</b>\n' if failure else '')
             + '\n'.join(f'{escape_html(sub_d["url"])} ({sub_d["msg"]})' for sub_d in failure)
     )
+    msg = (
+            success_msg
+            + ('\n\n' if success and failure else '')
+            + failure_msg
+    )
 
-    ret = {'unsub_d_l': result, 'msg': msg}
+    ret = {'unsub_d_l': result, 'msg': msg,
+           'success_count': len(success), 'failure_count': len(failure),
+           'success_msg': success_msg, 'failure_msg': failure_msg}
 
     return ret
 

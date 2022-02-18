@@ -11,7 +11,8 @@ from telethon.tl.patched import Message, MessageService
 from telethon.tl.functions.bots import SetBotCommandsRequest
 from telethon.tl.functions.channels import GetParticipantRequest
 from telethon.errors import FloodError, MessageNotModifiedError, UserNotParticipantError, QueryIdInvalidError, \
-    UserIsBlockedError, ChatWriteForbiddenError, UserIdInvalidError, ChannelPrivateError
+    UserIsBlockedError, ChatWriteForbiddenError, UserIdInvalidError, ChannelPrivateError, EntitiesTooLongError, \
+    MessageTooLongError
 
 from src import env, log, db, locks
 from src.i18n import i18n
@@ -84,8 +85,10 @@ async def respond_or_answer(event: Union[events.NewMessage.Event, events.Callbac
             except QueryIdInvalidError:  # callback query expired
                 pass  # respond instead
 
-        async with await locks.user_flood_rwlock(event.chat_id).gen_rlock():
-            await event.respond(msg, *args, **kwargs)
+        async with locks.user_flood_lock(event.chat_id):
+            pass  # wait for flood wait
+
+        await event.respond(msg, *args, **kwargs)
     except (UserIsBlockedError, UserIdInvalidError, ChatWriteForbiddenError, ChannelPrivateError):
         pass  # silently ignore
 
@@ -119,7 +122,7 @@ def command_gatekeeper(func: Optional[Callable] = None,
         sender_id: Optional[int] = None
 
         chat_id = event.chat_id
-        flood_rwlock = locks.user_flood_rwlock(chat_id)
+        flood_lock = locks.user_flood_lock(chat_id)
         pending_callbacks = locks.user_pending_callbacks(chat_id)
         is_callback = isinstance(event, events.CallbackQuery.Event)
         is_chat_action = isinstance(event, events.ChatAction.Event)
@@ -147,8 +150,9 @@ def command_gatekeeper(func: Optional[Callable] = None,
                 if lang_in_db is None:
                     await db.User.get_or_create(id=chat_id, lang='null')  # create the user if it doesn't exist
                 logger.info(f'Allow {describe_user()} to use {command}')
-                async with await flood_rwlock.gen_rlock():
-                    await asyncio.wait_for(func(event, *args, lang=lang, **kwargs), timeout=timeout)
+                async with flood_lock:
+                    pass  # wait for flood wait
+                await asyncio.wait_for(func(event, *args, lang=lang, **kwargs), timeout=timeout)
             except asyncio.TimeoutError as _e:
                 logger.error(f'Cancel {command} for {describe_user()} due to timeout ({timeout}s)', exc_info=_e)
                 await respond_or_answer(event, 'ERROR: ' + i18n[lang]['operation_timeout_error'])
@@ -309,17 +313,17 @@ def command_gatekeeper(func: Optional[Callable] = None,
             try:
                 if isinstance(e, FloodError):
                     # blocking other commands to be executed and messages to be sent
-                    flood_wlock = await flood_rwlock.gen_wlock()
-                    if hasattr(e, 'seconds') \
-                            and e.seconds is not None \
-                            and not flood_rwlock.v_write_count:  # only lock once
-                        async with flood_wlock:
-                            await asyncio.sleep(e.seconds + 1)
+                    if hasattr(e, 'seconds') and e.seconds is not None:
+                        await locks.user_flood_wait(chat_id, e.seconds)  # acquire a flood wait
+                    async with locks.user_flood_lock(chat_id):
+                        pass  # wait for flood wait (if another request has acquired a flood wait)
                     await respond_or_answer(event, 'ERROR: ' + i18n[lang]['flood_wait_prompt'])
                     await env.bot(e.request)  # resend
                 # usually occurred because the user hits the same button during auto flood wait
                 elif isinstance(e, MessageNotModifiedError):
                     await respond_or_answer(event, 'ERROR: ' + i18n[lang]['edit_conflict_prompt'])
+                elif isinstance(e, (EntitiesTooLongError, MessageTooLongError)):
+                    await respond_or_answer(event, 'ERROR: ' + i18n[lang]['message_too_long_prompt'])
                 else:
                     await respond_or_answer(event, 'ERROR: ' + i18n[lang]['uncaught_internal_error'])
             except (FloodError, MessageNotModifiedError):
@@ -457,5 +461,57 @@ async def set_bot_commands(scope: Union[types.BotCommandScopeDefault,
     )
 
 
-async def answer_callback_query_null(event: events.CallbackQuery.Event):
-    await event.answer(cache_time=3600)
+async def send_success_and_failure_msg(message: Union[Message, events.NewMessage.Event, events.CallbackQuery.Event],
+                                       success_msg: str,
+                                       failure_msg: str,
+                                       success_count: int,
+                                       failure_count: int,
+                                       *_,
+                                       lang: Optional[str] = None,
+                                       edit: bool = False,
+                                       **__):
+    for i in range(4):
+        success_msg_short = (
+                success_msg.split('\n', 1)[0] + '\n'
+                + i18n[lang]['n_subscriptions_in_total'] % success_count
+        ) if success_count else ''
+        failure_msg_short = (
+                failure_msg.split('\n', 1)[0] + '\n'
+                + i18n[lang]['n_subscriptions_in_total'] % failure_count
+        ) if failure_count else ''
+
+        if i == 0:
+            msg_html = (
+                    success_msg
+                    + ('\n\n' if success_msg and failure_msg else '')
+                    + failure_msg
+            )
+
+        elif i == 1:
+            msg_html = (
+                    success_msg_short
+                    + ('\n\n' if success_msg_short and failure_msg else '')
+                    + failure_msg
+            )
+
+        elif i == 2:
+            msg_html = (
+                    success_msg
+                    + ('\n\n' if success_msg and failure_msg_short else '')
+                    + failure_msg_short
+            )
+
+        else:
+            msg_html = (
+                    success_msg_short
+                    + ('\n\n' if success_msg_short and failure_msg_short else '')
+                    + failure_msg_short
+            )
+
+        try:
+            await (message.edit(msg_html, parse_mode='html') if edit else message.respond(msg_html, parse_mode='html'))
+            return
+        except (EntitiesTooLongError, MessageTooLongError) as e:
+            if i < 3:
+                continue
+            raise e

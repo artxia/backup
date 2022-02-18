@@ -1,4 +1,5 @@
 from typing import Optional, Union
+from url_normalize import url_normalize
 
 
 class Text:
@@ -165,6 +166,11 @@ class Text:
 
 # ---- HTML tags super class ----
 class TagWithParam(Text):
+    def __init__(self, content: Union["Text", str, list], param: str, *_args, **_kwargs):
+        super().__init__(content, param)
+
+
+class TagWithOptionalParam(Text):
     pass
 
 
@@ -181,6 +187,17 @@ class ListParent(TagWithoutParam):
 class Link(TagWithParam):
     tag = 'a'
     attr = 'href'
+
+    def __init__(self, content: Union["Text", str, list], param: str, copy: bool = False, *_args, **_kwargs):
+        super().__init__(content, param)
+        if not copy:
+            try:
+                self.param = url_normalize(self.param)
+            except (ValueError, TypeError):
+                # clear invalid URL
+                self.param = None
+                self.tag = None
+                self.attr = None
 
 
 class Bold(TagWithoutParam):
@@ -199,7 +216,7 @@ class Strike(TagWithoutParam):
     tag = 's'
 
 
-class Code(TagWithParam):
+class Code(TagWithOptionalParam):
     tag = 'code'
     attr = 'class'
 
@@ -209,7 +226,10 @@ class Pre(TagWithoutParam):
 
 
 class Br(TagWithoutParam):
-    def __init__(self, count: int = 1, *_args, **_kwargs):
+    def __init__(self, count: int = 1, copy: bool = False, *_args, **_kwargs):
+        if copy:
+            super().__init__(self.content)
+            return
         if not isinstance(count, int):
             count = 1
         super().__init__('\n' * count)

@@ -13,11 +13,10 @@ from collections import defaultdict, Counter
 from . import inner
 from .utils import escape_html
 from .inner.utils import get_hash, update_interval, deactivate_feed
-from src import log, db, env
+from src import log, db, env, web
 from src.exceptions import EntityNotFoundError
 from src.i18n import i18n
 from src.parsing.post import get_post_from_entry, Post
-from src.web import feed_get
 
 logger = log.getLogger('RSStT.monitor')
 
@@ -146,7 +145,7 @@ async def __monitor(feed: db.Feed) -> str:
     if feed.etag:
         headers['If-None-Match'] = feed.etag
 
-    wf = await feed_get(feed.link, headers=headers, verbose=False)
+    wf = await web.feed_get(feed.link, headers=headers, verbose=False)
     rss_d = wf.rss_d
 
     if (rss_d is not None or wf.status == 304) and (feed.error_count > 0 or feed.next_check_time):
@@ -159,13 +158,13 @@ async def __monitor(feed: db.Feed) -> str:
         return CACHED
 
     if rss_d is None:  # error occurred
-        if feed.error_count >= 100:
-            logger.error(f'Deactivated feed due to too many errors: {feed.link}')
-            await __deactivate_feed_and_notify_all(feed)
-            return FAILED
         feed.error_count += 1
         if feed.error_count % 20 == 0:  # error_count is always > 0
-            logger.warning(f'Fetch failed ({feed.error_count}th retry, {wf.msg}): {feed.link}')
+            logger.warning(f'Fetch failed ({feed.error_count}th retry, {wf.error}): {feed.link}')
+        if feed.error_count >= 100:
+            logger.error(f'Deactivated feed due to too many errors: {feed.link}')
+            await __deactivate_feed_and_notify_all(feed, reason=wf.error)
+            return FAILED
         if feed.error_count >= 10:  # too much error, delay next check
             interval = feed.interval or db.EffectiveOptions.default_interval
             next_check_interval = min(interval, 15) * min(feed.error_count // 10 + 1, 5)
@@ -179,6 +178,12 @@ async def __monitor(feed: db.Feed) -> str:
             await inner.sub.migrate_to_new_url(feed, wf.url)
         logger.debug(f'Fetched (empty): {feed.link}')
         return EMPTY
+
+    title = rss_d.feed.title
+    if title != feed.title:
+        logger.debug(f'Feed title changed ({feed.title} -> {title}): {feed.link}')
+        feed.title = title
+        await feed.save()
 
     # sequence matters so we cannot use a set
     old_hashes: list = feed.entry_hashes if isinstance(feed.entry_hashes, list) else []
@@ -259,7 +264,7 @@ async def __send(sub: db.Sub, post: Union[str, Post]):
                 await inner.sub.unsub_all(user_id)
 
 
-async def __deactivate_feed_and_notify_all(feed: db.Feed):
+async def __deactivate_feed_and_notify_all(feed: db.Feed, reason: Union[web.WebError, str] = None):
     subs = await db.Sub.filter(feed=feed, state=1).prefetch_related('user')
     await deactivate_feed(feed)
 
@@ -273,6 +278,10 @@ async def __deactivate_feed_and_notify_all(feed: db.Feed):
                 post=(
                         f'<a href="{feed.link}">{escape_html(sub.title or feed.title)}</a>\n'
                         + i18n[sub.user.lang]['feed_deactivated_warn']
+                        + (
+                            f'\n{reason.i18n_message(sub.user.lang) if isinstance(reason, web.WebError) else reason}'
+                            if reason else ''
+                        )
                 )
             )
             for sub in subs)

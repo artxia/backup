@@ -11,6 +11,7 @@ from functools import partial
 from time import sleep
 from typing import Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from telethon import TelegramClient, events
 from telethon.errors import ApiIdPublishedFloodError
 from telethon.tl import types
@@ -102,7 +103,7 @@ async def pre():
                           command.utils.ReplyMessage(pattern=r'https?://'))
     bot.add_event_handler(command.sub.cmd_unsub,
                           events.NewMessage(pattern='(/remove|/unsub)([^_]|$)'))
-    bot.add_event_handler(command.sub.cmd_unsub_all,
+    bot.add_event_handler(command.sub.cmd_or_callback_unsub_all,
                           events.NewMessage(pattern='/remove_all|/unsub_all'))
     bot.add_event_handler(command.sub.cmd_list_or_callback_get_list_page,
                           events.NewMessage(pattern='/list'))
@@ -131,14 +132,18 @@ async def pre():
     bot.add_event_handler(command.administration.cmd_set_option,
                           events.NewMessage(pattern='/set_option'))
     # callback query handler
-    bot.add_event_handler(command.utils.answer_callback_query_null,  # null callback query
+    bot.add_event_handler(command.misc.callback_null,  # null callback query
                           events.CallbackQuery(data='null'))
+    bot.add_event_handler(command.misc.callback_cancel,
+                          events.CallbackQuery(data='cancel'))
     bot.add_event_handler(command.sub.cmd_list_or_callback_get_list_page,
                           events.CallbackQuery(pattern=r'^get_list_page_\d+$'))
     bot.add_event_handler(command.sub.callback_unsub,
                           events.CallbackQuery(pattern=r'^unsub_\d+(\|\d+)$'))
     bot.add_event_handler(command.sub.callback_get_unsub_page,
                           events.CallbackQuery(pattern=r'^get_unsub_page_\d+$'))
+    bot.add_event_handler(command.sub.cmd_or_callback_unsub_all,
+                          events.CallbackQuery(data='unsub_all'))
     bot.add_event_handler(command.management.callback_set_lang,
                           events.CallbackQuery(pattern=r'^set_lang_[\w_\-]+$'))
     bot.add_event_handler(command.management.cmd_or_callback_help,
@@ -176,7 +181,9 @@ if __name__ == '__main__':
     )
 
     scheduler = AsyncIOScheduler(event_loop=loop)
-    scheduler.add_job(command.monitor.run_monitor_task, trigger='cron', minute='*/1', max_instances=10, timezone='UTC')
+    scheduler.add_job(func=command.monitor.run_monitor_task,
+                      trigger=CronTrigger(minute='*', second=env.CRON_SECOND, timezone='UTC'),
+                      max_instances=10)
     scheduler.start()
 
     bot.run_until_disconnected()
