@@ -6,12 +6,13 @@ aiographfix==0.2.2
 # feed parsing
 feedparser==6.0.8
 listparser==0.18
-#pillow==8.3.2
+pillow==9.0.1
 bs4==0.0.1
 beautifulsoup4==4.10.0
-lxml==4.7.1
+lxml==4.8.0
 fuzzywuzzy==0.18.0
 emoji==1.6.3
+minify-html==0.8.0
 
 # db
 tortoise-orm[asyncpg,accel]==0.18.1
@@ -27,7 +28,7 @@ url-normalize==1.4.3
 
 # utils
 colorlog==6.6.0
-APScheduler==3.8.1
+APScheduler==3.9.0.post1
 python-dotenv==0.19.2
 readerwriterlock==1.0.9
 multidict==6.0.2

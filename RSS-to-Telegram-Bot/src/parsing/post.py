@@ -5,6 +5,7 @@ import json
 import re
 import traceback
 import asyncio
+import minify_html
 from bs4 import BeautifulSoup
 from bs4.element import NavigableString, PageElement, Tag
 from emoji import emojize
@@ -24,17 +25,15 @@ from telethon.errors.rpcerrorlist import (
     WebpageCurlFailedError, WebpageMediaEmptyError, MediaEmptyError, FileReferenceExpiredError,
     BadRequestError,  # only FILE_REFERENCE_\d_EXPIRED
 
-    # errors caused by lack of permission
-    UserIsBlockedError, UserIdInvalidError, ChatWriteForbiddenError, ChannelPrivateError,
-
     # errors caused by too much entity data
     EntitiesTooLongError
 )
 
 from src import env, message, log, web
 from src.parsing import tgraph
-from src.parsing.medium import Video, Image, Media, Animation
+from src.parsing.medium import Video, Image, Media, Animation, VIDEO, IMAGE, ANIMATION, MEDIA_GROUP
 from src.parsing.html_text import *
+from src.exceptions import UserBlockedErrors
 
 logger = log.getLogger('RSStT.post')
 
@@ -47,10 +46,18 @@ from fuzzywuzzy import fuzz
 
 warnings.warn = warnings.original_warn
 
-stripNewline = re.compile(r'\n{3,}', )
-stripLineEnd = re.compile(r'[ \t\xa0]+\n')
-isEmoticon = re.compile(r'(width|height): ?(([012]?\d|30)(\.\d)?px|[01](\.\d)?em)')
-fileReferenceNExpired = re.compile(r'FILE_REFERENCE_(?:\d_)?EXPIRED')
+stripLineEnd = re.compile(r'[ 　\xa0\t\r\u200b\u2006\u2028\u2029]+\n')  # use firstly
+stripNewline = re.compile(r'[\f\n\u2028\u2029]{3,}')  # use secondly
+isSmallIcon = re.compile(r'(width|height): ?(([012]?\d|30)(\.\d)?px|([01](\.\d)?|2)r?em)').search
+srcsetParser = re.compile(r'(?:^|,\s*)'
+                          r'(?P<url>\S+)'  # allow comma here because it is valid in URL
+                          r'(?:\s+'
+                          r'(?P<number>\d+(\.\d+)?)'
+                          r'(?P<unit>[wx])'
+                          r')?'
+                          r'\s*'
+                          r'(?=,|$)').finditer  # e.g.: url,url 1x,url 2x,url 100w,url 200w
+isFileReferenceNExpired = re.compile(r'FILE_REFERENCE_(?:\d_)?EXPIRED').search
 
 # load emoji dict
 with open('src/parsing/emojify.json', 'r', encoding='utf-8') as emojify_json:
@@ -114,9 +121,7 @@ class Post:
         :param feed_link: the url of the feed where the post from
         """
         self.retries = 0
-        xml = xml.replace('\n', '')
-        xml = emojify(xml)
-        self.xml = xml
+        self.xml = minify_html.minify(xml)
         self.soup = BeautifulSoup(xml, 'lxml')
         self.media: Media = Media()
         self.text = Text('')
@@ -150,30 +155,53 @@ class Post:
             return
 
         if self.messages and len(self.messages) >= 5:
-            logger.debug(f'Too large, send a pure link message instead: "{self.title}"')
+            logger.debug(f'Too large, send a pure link message instead: "{self.link}"')
             pure_link_post = Post(xml='', title=self.title, feed_title=self.feed_title, link=self.link,
                                   author=self.author, telegraph_url=self.link, feed_link=self.feed_link)
             await pure_link_post.send_message(chat_id, reply_to_msg_id, silent)
             return
 
         tries = 0
-        file_reference_expired_flag = False
-        e = None  # placeholder
+        max_tries = 10
+        last_try = False
+        server_change_count = 0
+        media_fallback_count = 0
+        invalidate_count = 0
+        useless_invalidate_count = 0
+        err_list = []
         while True:
-            if tries >= 5:
-                logger.error(f'Sending {self.link} failed after {tries} tries'
-                             f'{", w/ `FileReferenceError` occurred" * file_reference_expired_flag}. '
-                             f'Sometime it means that there may be some bugs in the code :(', exc_info=e)
-                break
+            if not (invalidate_count or useless_invalidate_count) and tries > max_tries and not last_try:
+                last_try = True  # try the last time
+            elif last_try or invalidate_count > 1 or useless_invalidate_count > 0 or tries > max_tries:
+                logger.error(
+                    f'Sending {self.link} failed (feed: {self.feed_link}, user: {chat_id}). \n'
+                    f'Counters: [tries={tries}, server_change_count={server_change_count}, '
+                    f'media_fallback_count={media_fallback_count}, invalidate_count={invalidate_count}, '
+                    f'useless_invalidate_count={useless_invalidate_count}]. \n'
+                    f'Errors: {err_list}'
+                    + (
+                        f'\nSometimes it means that there may be some bugs in the code :('
+                        if (
+                                last_try or invalidate_count > 1 or useless_invalidate_count > 0
+                                or sum((server_change_count, media_fallback_count,
+                                        invalidate_count, useless_invalidate_count)) != tries
+                        ) else ''
+                    )
+                )
+                return
             tries += 1
 
+            media_hash = None
             try:
-                for msg in self.messages:
-                    await msg.send(chat_id, reply_to_msg_id, silent)
-                break
+                async with self.media.modify_lock:
+                    media_hash = self.media.hash
+                    for msg in self.messages:
+                        await msg.send(chat_id, reply_to_msg_id, silent)
+                    return
 
             # errors caused by too much entity data
-            except EntitiesTooLongError:
+            except EntitiesTooLongError as e:
+                err_list.append(e)
                 await self.generate_message(force_telegraph=True)
                 await self.telegraph_post.send_message(chat_id, reply_to_msg_id, silent)
                 return
@@ -182,36 +210,64 @@ class Post:
             except (PhotoInvalidDimensionsError, PhotoSaveFileInvalidError, PhotoInvalidError,
                     PhotoCropSizeSmallError, PhotoContentUrlEmptyError, PhotoContentTypeInvalidError,
                     GroupedMediaInvalidError, MediaGroupedInvalidError, MediaInvalidError,
-                    VideoContentTypeInvalidError, VideoFileInvalidError, ExternalUrlInvalidError) as err:
-                e = err
-                if self.invalidate_all_media():
-                    logger.debug(f'All media was set invalid because some of them are invalid '
-                                 f'({e.__class__.__name__})')
-                    await self.generate_message()
+                    VideoContentTypeInvalidError, VideoFileInvalidError, ExternalUrlInvalidError) as e:
+                err_list.append(e)
+                async with self.media.modify_lock:
+                    if self.media.hash != media_hash:
+                        continue  # media changed by another send task, try again
+                    if not last_try and await self.fallback_media():
+                        logger.debug(f'Media fall backed because some of them are invalid '
+                                     f'({e.__class__.__name__}): {self.link}')
+                        await self.generate_message()
+                        media_fallback_count += 1
+                    else:
+                        if await self.fallback_media(force_invalidate_all=True):
+                            logger.debug(f'All media was set invalid because some of them are invalid '
+                                         f'({e.__class__.__name__}): {self.link}')
+                            await self.generate_message()
+                            invalidate_count += 1
+                        else:
+                            useless_invalidate_count += 1
                 continue
 
-            except (UserIsBlockedError, UserIdInvalidError, ChatWriteForbiddenError, ChannelPrivateError) as e:
+            except UserBlockedErrors as e:
+                err_list.append(e)
                 raise e  # let monitoring task to deal with it
 
             # errors caused by server instability or network instability between img server and telegram server
-            except (WebpageCurlFailedError, WebpageMediaEmptyError, MediaEmptyError) as err:
-                e = err
-                if await self.media.change_all_server():
-                    logger.debug(f'Telegram cannot fetch some media ({e.__class__.__name__}). '
-                                 f'Changed img server and retrying...')
-                elif self.invalidate_all_media():
-                    logger.debug(f'All media was set invalid '
-                                 f'because Telegram still cannot fetch some media after changing img server '
-                                 f'({e.__class__.__name__}).')
-                    await self.generate_message()
+            except (WebpageCurlFailedError, WebpageMediaEmptyError, MediaEmptyError) as e:
+                err_list.append(e)
+                async with self.media.modify_lock:
+                    if self.media.hash != media_hash:
+                        continue  # media changed by another send task, try again
+                    if not last_try and await self.media.change_all_server():
+                        logger.debug(f'Telegram cannot fetch some media ({e.__class__.__name__}). '
+                                     f'Changed img server and retrying: {self.link}')
+                        server_change_count += 1
+                    elif not last_try and await self.fallback_media():
+                        logger.debug(f'Media fall backed '
+                                     f'because Telegram still cannot fetch some media after changing img server '
+                                     f'({e.__class__.__name__}): {self.link}')
+                        await self.generate_message()
+                        media_fallback_count += 1
+                    else:
+                        if await self.fallback_media(force_invalidate_all=True):
+                            logger.debug(f'All media was set invalid '
+                                         f'because Telegram still cannot fetch some media after changing img server '
+                                         f'({e.__class__.__name__}): {self.link}')
+                            await self.generate_message()
+                            invalidate_count += 1
+                        else:
+                            useless_invalidate_count += 1
                 continue
 
-            except Exception as err:
-                e = err
-                if type(e) == FileReferenceExpiredError \
-                        or (type(e) == BadRequestError and fileReferenceNExpired.search(str(e))):
-                    file_reference_expired_flag = True
+            except Exception as e:
+                if isinstance(e, FileReferenceExpiredError) \
+                        or (type(e) == BadRequestError and isFileReferenceNExpired(str(e))):
+                    err_list.append(e if isinstance(e, FileReferenceExpiredError)
+                                    else FileReferenceExpiredError(e.request))
                     continue
+                err_list.append(e)
                 logger.warning(f'Sending {self.link} failed (feed: {self.feed_link}, user: {chat_id}): ', exc_info=e)
                 error_message = Post(f'Something went wrong while sending this message '
                                      f'(feed: {self.feed_link}, user: {chat_id}). '
@@ -220,7 +276,7 @@ class Post:
                                      self.title, self.feed_title, self.link, self.author, feed_link=self.feed_link,
                                      service_msg=True)
                 await error_message.send_message(env.MANAGER)
-                break
+                return
 
     async def telegraph_ify(self):
         try:
@@ -231,7 +287,7 @@ class Post:
             return telegraph_post
         except exceptions.TelegraphError as e:
             if str(e) == 'CONTENT_TOO_BIG':
-                logger.debug(f'Content too big, send a pure link message instead: "{self.title}"')
+                logger.debug(f'Content too big, send a pure link message instead: "{self.link}"')
                 pure_link_post = Post(xml='', title=self.title, feed_title=self.feed_title, link=self.link,
                                       author=self.author, telegraph_url=self.link, feed_link=self.feed_link)
                 return pure_link_post
@@ -275,11 +331,11 @@ class Post:
                         )
                 )
         ):
-            logger.debug(f'Will be sent via Telegraph: "{self.title}"')
+            logger.debug(f'Will be sent via Telegraph: "{self.link}"')
             self.telegraph_post = await self.telegraph_ify()  # telegraph post sent successful
             if self.telegraph_post:
                 return
-            logger.debug(f'Cannot be sent via Telegraph, fallback to normal message: "{self.title}"')
+            logger.debug(f'Cannot be sent via Telegraph, fallback to normal message: "{self.link}"')
 
         if not self.text:
             await self.generate_text()
@@ -311,16 +367,16 @@ class Post:
             curr_media = curr['media']
             curr_text = msg_texts.pop(0) if msg_texts \
                 else f'<b><i><u>Media of "{Text(self.title).get_html()}"</u></i></b>'
-            if curr_type == 'image':
+            if curr_type == IMAGE:
                 self.messages.append(message.PhotoMsg(curr_text, curr_media))
                 continue
-            if curr_type == 'video':
+            if curr_type == VIDEO:
                 self.messages.append(message.VideoMsg(curr_text, curr_media))
                 continue
-            if curr_type == 'animation':
+            if curr_type == ANIMATION:
                 self.messages.append(message.AnimationMsg(curr_text, curr_media))
                 continue
-            if curr_type == 'media_group':
+            if curr_type == MEDIA_GROUP:
                 self.messages.append(message.MediaGroupMsg(curr_text, curr_media))
                 continue
         if msg_texts:
@@ -328,8 +384,8 @@ class Post:
 
         return len(self.messages)
 
-    def invalidate_all_media(self):
-        if not self.media.invalidate_all():
+    async def fallback_media(self, force_invalidate_all: bool = False) -> bool:
+        if not (await self.media.fallback_all() if not force_invalidate_all else self.media.invalidate_all()):
             return False
         self.text = self.origin_text.copy()
         self._add_metadata()
@@ -349,7 +405,8 @@ class Post:
         elif len(self.text) == 0 and self.title:
             self.text = Text(self.title)
         elif self.title and ('微博' not in self.feed_title or env.DEBUG):
-            title_tbc = self.title.replace('[图片]', '').replace('[视频]', '').strip().rstrip('.…')
+            title_tbc = self.title.replace('[图片]', '').replace('[视频]', '').replace('发布了: ', '') \
+                .strip().rstrip('.…')
             similarity = fuzz.partial_ratio(title_tbc, plain_text[0:len(self.title) + 10])
             logger.debug(f'{self.title} ({self.link}) is {similarity}% likely to be of no title.')
             if similarity < 90:
@@ -390,42 +447,26 @@ class Post:
             return
         self.text = Text([self.text, text_invalid_media])
 
-    async def _get_item(self, soup: Union[PageElement, BeautifulSoup, Tag, NavigableString, Iterable[PageElement]],
-                        get_source: bool = False):
+    async def _get_item(self, soup: Union[PageElement, BeautifulSoup, Tag, NavigableString, Iterable[PageElement]]):
         result = []
         if isinstance(soup, Iterator):  # a Tag is also Iterable, but we only expect an Iterator here
             for child in soup:
-                item = await self._get_item(child, get_source)
-                if item and get_source and isinstance(item, list):
-                    result.extend(item)
+                item = await self._get_item(child)
                 if item:
                     result.append(item)
             if not result:
                 return None
-            if get_source:
-                return result
             return result[0] if len(result) == 1 else Text(result)
 
         if isinstance(soup, NavigableString):
             if type(soup) is NavigableString:
-                if str(soup) == ' ' or get_source:
-                    return None
-                return Text(str(soup))
-            return None  # we do not expect a subclass of NavigableString here
+                return Text(emojify(str(soup)))
+            return None  # we do not expect a subclass of NavigableString here, drop it
 
         if not isinstance(soup, Tag):
             return None
 
         tag = soup.name
-
-        if get_source:
-            if tag != 'source':
-                return None
-            src = soup.get('src')
-            if not src:
-                return None
-            return src
-
         if tag is None:
             return None
 
@@ -465,39 +506,73 @@ class Post:
             return Link(await self._get_item(soup.children), href)
 
         if tag == 'img':
-            src, alt, _class, style = soup.get('src'), soup.get('alt'), soup.get('class', ''), soup.get('style', '')
-            if alt and (isEmoticon.search(style) or 'emoji' in _class or (alt.startswith(':') and alt.endswith(':'))):
-                return Text(emojify(alt))
-            if not src:
+            src, srcset = soup.get('src'), soup.get('srcset')
+            if not (src or srcset):
                 return None
-            if not src.startswith('http'):
-                src = urljoin(self.feed_link, src)
-            if src.endswith('.gif'):
-                self.media.add(Animation(src))
-                return None
-            self.media.add(Image(src))
+            alt, _class = soup.get('alt', ''), soup.get('class', '')
+            style, width, height = soup.get('style', ''), soup.get('width', ''), soup.get('height', '')
+            width = int(width) if width and width.isdigit() else float('inf')
+            height = int(height) if height and height.isdigit() else float('inf')
+            if width <= 30 or height <= 30 or isSmallIcon(style) \
+                    or 'emoji' in _class or (alt.startswith(':') and alt.endswith(':')):
+                return Text(emojify(alt)) if alt else None
+            _multi_src = []
+            if srcset:
+                srcset_matches: list[dict[str, Union[int, str]]] = [{
+                    'url': match['url'],
+                    'number': float(match['number']) if match['number'] else 1,
+                    'unit': match['unit'] if match['unit'] else 'x'
+                } for match in (
+                    match.groupdict() for match in srcsetParser(srcset)
+                )] + ([{'url': src, 'number': 1, 'unit': 'x'}] if src else [])
+                if srcset_matches:
+                    srcset_matches_unit_w = [match for match in srcset_matches if match['unit'] == 'w']
+                    srcset_matches_unit_x = [match for match in srcset_matches if match['unit'] == 'x']
+                    srcset_matches_unit_w.sort(key=lambda match: float(match['number']), reverse=True)
+                    srcset_matches_unit_x.sort(key=lambda match: float(match['number']), reverse=True)
+                    while True:
+                        src_match_unit_w = srcset_matches_unit_w.pop(0) if srcset_matches_unit_w else None
+                        src_match_unit_x = srcset_matches_unit_x.pop(0) if srcset_matches_unit_x else None
+                        if not (src_match_unit_w or src_match_unit_x):
+                            break
+                        if src_match_unit_w:
+                            _multi_src.append(src_match_unit_w['url'])
+                        if src_match_unit_x:
+                            if float(src_match_unit_x['number']) <= 1 and srcset_matches_unit_w:
+                                srcset_matches_unit_x.insert(0, src_match_unit_x)
+                                continue  # let src using unit w win
+                            _multi_src.append(src_match_unit_x['url'])
+            else:
+                _multi_src.append(src) if src else None
+            multi_src = []
+            is_gif = False
+            for _src in _multi_src:
+                if not isinstance(_src, str):
+                    continue
+                if not _src.startswith('http'):
+                    _src = urljoin(self.feed_link, _src)
+                if urlparse(_src).path.endswith('.gif'):
+                    is_gif = True
+                multi_src.append(_src)
+            if multi_src:
+                self.media.add(Image(multi_src) if not is_gif else Animation(multi_src))
             return None
 
         if tag == 'video':
-            video = None
-            _src = soup.get('src')
-            if _src:
-                multi_src = [_src]
-            else:
-                multi_src = await self._get_item(soup.children, get_source=True)
-            if not multi_src:
-                return None
-            for src in multi_src:
-                if not isinstance(src, str):
+            src = soup.get('src')
+            poster = soup.get('poster')
+            _multi_src = [t['src'] for t in soup.find_all(name='source') if t.get('src')]
+            if src:
+                _multi_src.append(src)
+            multi_src = []
+            for _src in _multi_src:
+                if not isinstance(_src, str):
                     continue
-                if not src.startswith('http'):
-                    src = urljoin(self.feed_link, src)
-                video = Video(src)
-                await video.validate()
-                if video:  # if video is valid
-                    break
-            if video is not None:
-                self.media.add(video)
+                if not _src.startswith('http'):
+                    _src = urljoin(self.feed_link, _src)
+                multi_src.append(_src)
+            if multi_src:
+                self.media.add(Video(multi_src, type_fallback_urls=poster))
             return None
 
         if tag == 'b' or tag == 'strong':
