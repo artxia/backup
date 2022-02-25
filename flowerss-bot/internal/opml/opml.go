@@ -1,9 +1,10 @@
-package bot
+package opml
 
 import (
 	"crypto/tls"
 	"encoding/xml"
 	"errors"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -72,6 +73,19 @@ func NewOPML(b []byte) (*OPML, error) {
 	return &root, nil
 }
 
+func ReadOPML(r io.Reader) (*OPML, error) {
+	body, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+
+	o, err := NewOPML(body)
+	if err != nil {
+		return nil, errors.New("parse opml file error")
+	}
+	return o, nil
+}
+
 // GetOPMLByURL get OPML form url
 func GetOPMLByURL(fileURL string) (*OPML, error) {
 	var proxy *url.URL
@@ -130,7 +144,7 @@ func (o OPML) XML() (string, error) {
 	return xml.Header + string(b), err
 }
 
-// ToOPML dump OPML to opml file
+// ToOPML dump sources to opml file
 func ToOPML(sources []model.Source) (string, error) {
 	O := OPML{}
 	O.XMLName.Local = "opml"
