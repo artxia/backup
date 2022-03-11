@@ -3,6 +3,9 @@ from typing import Optional, Sequence, Union
 
 import re
 import json
+from bs4 import BeautifulSoup
+from minify_html import minify
+from html import unescape
 from emoji import emojize
 from telethon.tl.types import TypeMessageEntity
 from telethon.helpers import add_surrogate
@@ -12,6 +15,7 @@ from src import log
 
 logger = log.getLogger('RSStT.parsing')
 
+stripBr = partial(re.compile(r'\s*<br\s*/?>\s*').sub, '<br/>')
 stripLineEnd = partial(re.compile(r'[ 　\xa0\t\r\u200b\u2006\u2028\u2029]+\n').sub, '\n')  # use firstly
 stripNewline = partial(re.compile(r'[\f\n\u2028\u2029]{3,}').sub, '\n\n')  # use secondly
 stripAnySpace = partial(re.compile(r'\s+').sub, ' ')
@@ -41,11 +45,31 @@ def is_absolute_link(link: str) -> bool:
 
 
 def emojify(xml):
-    xml = emojize(xml, use_aliases=True)
+    xml = emojize(xml, language='alias', variant='emoji_type')
     for emoticon, emoji in emoji_dict.items():
         # emojify weibo emoticons, get all here: https://api.weibo.com/2/emotions.json?source=1362404091
         xml = xml.replace(f'[{emoticon}]', emoji)
     return xml
+
+
+def html_validator(html: str) -> str:
+    html = stripBr(html)
+    # validate invalid HTML first, since minify_html is not so robust
+    html = BeautifulSoup(html, 'lxml').decode()
+    html = minify(html,
+                  do_not_minify_doctype=True,
+                  keep_closing_tags=True,
+                  keep_spaces_between_attributes=True,
+                  ensure_spec_compliant_unquoted_attribute_values=True,
+                  remove_processing_instructions=True)
+    return html
+
+
+def html_space_stripper(s: str, enable_emojify: bool = False) -> str:
+    if not s:
+        return s
+    s = stripAnySpace(unescape(s)).strip()
+    return emojify(s) if enable_emojify else s
 
 
 def parse_entry(entry):
@@ -72,11 +96,15 @@ def parse_entry(entry):
                 content = content[0]
         content = content.get('value', '')
 
-    EntryParsed.content = content
+    EntryParsed.content = html_validator(content)
     EntryParsed.link = entry.get('link') or entry.get('guid')
-    EntryParsed.author = entry['author'] if ('author' in entry and type(entry['author']) is str) else None
+    author = entry['author'] if ('author' in entry and type(entry['author']) is str) else None
+    author = html_space_stripper(author) if author else None
+    EntryParsed.author = author if author else None  # reject empty string
     # hmm, some entries do have no title, should we really set up a feed hospital?
-    EntryParsed.title = entry.get('title')
+    title = entry.get('title')
+    title = html_space_stripper(title, enable_emojify=True) if title else None
+    EntryParsed.title = title if title else None  # reject empty string
     if isinstance(entry.get('links'), list):
         EntryParsed.enclosures = []
         for link in entry['links']:

@@ -19,7 +19,7 @@ from random import sample
 from pathlib import Path
 
 from src import env, log, db, command
-from src.i18n import i18n, ALL_LANGUAGES
+from src.i18n import i18n, ALL_LANGUAGES, get_commands_list
 from src.parsing import tgraph
 
 # log
@@ -80,16 +80,16 @@ async def pre():
     try:  # set bot command
         await asyncio.gather(
             command.utils.set_bot_commands(scope=types.BotCommandScopeDefault(), lang_code='',
-                                           commands=command.utils.get_commands_list()),
+                                           commands=get_commands_list()),
             *(
                 command.utils.set_bot_commands(scope=types.BotCommandScopeDefault(),
                                                lang_code=i18n[lang]['iso_639_code'],
-                                               commands=command.utils.get_commands_list(lang=lang))
+                                               commands=get_commands_list(lang=lang))
                 for lang in ALL_LANGUAGES if len(i18n[lang]['iso_639_code']) == 2
             ),
             command.utils.set_bot_commands(scope=types.BotCommandScopePeer(types.InputPeerUser(env.MANAGER, 0)),
                                            lang_code='',
-                                           commands=command.utils.get_commands_list(lang=manager_lang, manager=True)),
+                                           commands=get_commands_list(lang=manager_lang, manager=True)),
         )
     except Exception as e:
         logger.warning('Set command error: ', exc_info=e)
@@ -113,10 +113,14 @@ async def pre():
                           events.NewMessage(pattern='/export'))
     bot.add_event_handler(command.customization.cmd_set_or_callback_get_set_page,
                           events.NewMessage(pattern=r'/set(\W|$)'))
+    bot.add_event_handler(command.customization.cmd_set_default,
+                          events.NewMessage(pattern=r'/set_default(\W|$)'))
     bot.add_event_handler(command.customization.cmd_set_title,
                           events.NewMessage(pattern='/set_title'))
     bot.add_event_handler(command.customization.cmd_set_interval,
                           events.NewMessage(pattern='/set_interval'))
+    bot.add_event_handler(command.customization.cmd_set_hashtags,
+                          events.NewMessage(pattern='/set_hashtags'))
     bot.add_event_handler(command.opml.opml_import,
                           command.utils.NewFileMessage(filename_pattern=r'^.*\.opml$'))
     bot.add_event_handler(command.misc.cmd_start,
@@ -133,6 +137,8 @@ async def pre():
                           events.NewMessage(pattern='/version'))
     bot.add_event_handler(command.administration.cmd_test,
                           events.NewMessage(pattern='/test'))
+    bot.add_event_handler(command.administration.cmd_user_info_or_callback_set_user,
+                          events.NewMessage(pattern='/user_info'))
     bot.add_event_handler(command.administration.cmd_set_option,
                           events.NewMessage(pattern='/set_option'))
     # callback query handler
@@ -168,12 +174,22 @@ async def pre():
                           events.CallbackQuery(pattern=r'^get_activate_page|\d+$'))
     bot.add_event_handler(partial(command.customization.callback_get_activate_or_deactivate_page, activate=False),
                           events.CallbackQuery(pattern=r'^get_deactivate_page|\d+$'))
-    bot.add_event_handler(command.customization.callback_set,
+    bot.add_event_handler(partial(command.customization.callback_set, set_user_default=False),
                           events.CallbackQuery(pattern=r'^set(=\d+(,\w+(,\w+)?)?)?(\|\d+)?$'))
+    bot.add_event_handler(partial(command.customization.callback_set, set_user_default=True),
+                          events.CallbackQuery(pattern=r'^set_default(=\w+(,\w+)?)?$'))
     bot.add_event_handler(command.customization.cmd_set_or_callback_get_set_page,
                           events.CallbackQuery(pattern=r'^get_set_page|\d+$'))
+    bot.add_event_handler(command.customization.callback_reset,
+                          events.CallbackQuery(pattern=r'^reset=\d+(\|\d+)?$'))
+    bot.add_event_handler(command.customization.callback_reset_all,
+                          events.CallbackQuery(pattern=r'^reset_all$'))
+    bot.add_event_handler(command.customization.callback_reset_all_confirm,
+                          events.CallbackQuery(pattern=r'^reset_all_confirm$'))
     bot.add_event_handler(command.customization.callback_del_subs_title,
                           events.CallbackQuery(pattern=r'^del_subs_title=(\d+-\d+\|)*(\d+-\d+)$'))
+    bot.add_event_handler(command.administration.cmd_user_info_or_callback_set_user,
+                          events.CallbackQuery(pattern=r'^set_user=-?\d+,(-1|0|1)$'))
     # inline query handler
     bot.add_event_handler(command.misc.inline_command_constructor,
                           events.InlineQuery())

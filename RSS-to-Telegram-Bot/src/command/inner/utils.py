@@ -3,16 +3,31 @@ from typing import AnyStr, Any, Union, Optional
 from collections.abc import Iterable, Mapping
 
 import asyncio
+import re
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 from zlib import crc32
 from telethon import Button
 from telethon.tl.types import KeyboardButtonCallback
 
-from src import db, log
+from src import db, log, env
 from src.i18n import i18n
 
 logger = log.getLogger('RSStT.command')
+
+emptyButton = Button.inline(' ', data='null')
+
+
+def parse_hashtags(text: str) -> list[str]:
+    if text.find('#') != -1:
+        return re.findall(r'(?<=#)[^\s#]+', text)
+    return re.findall(r'\S+', text)
+
+
+def construct_hashtags(tags: Union[Iterable[str], str]) -> str:
+    if isinstance(tags, str):
+        tags = parse_hashtags(tags)
+    return ' '.join('#' + tag for tag in tags)
 
 
 def get_hash(string: AnyStr) -> str:
@@ -83,12 +98,13 @@ def arrange_grid(to_arrange: Iterable, columns: int = 8, rows: int = 13) -> Opti
     ) if counts > 0 else None
 
 
-async def get_sub_list_by_page(user_id: int, page_number: int, size: int, *args, **kwargs) \
+async def get_sub_list_by_page(user_id: int, page_number: int, size: int, desc: bool = True, *args, **kwargs) \
         -> tuple[int, int, list[db.Sub], int]:
     """
     :param user_id: user id
     :param page_number: page number (1-based)
     :param size: page size
+    :param desc: descending order
     :param args: args for `Sub.filter`
     :param kwargs: kwargs for `Sub.filter`
     :return: (page_count, page_number, subs_page, total_count)
@@ -107,7 +123,10 @@ async def get_sub_list_by_page(user_id: int, page_number: int, size: int, *args,
         page_number = page_count
 
     offset = (page_number - 1) * size
-    page = await db.Sub.filter(user=user_id, *args, **kwargs).order_by('id').limit(size).offset(offset) \
+    page = await db.Sub.filter(user=user_id, *args, **kwargs) \
+        .order_by('-id' if desc else 'id') \
+        .limit(size) \
+        .offset(offset) \
         .prefetch_related('feed')
     return page_number, page_count, page, sub_count
 
@@ -123,7 +142,7 @@ def get_page_buttons(page_number: int,
     page_buttons = [
         Button.inline(f'< {i18n[lang]["previous_page"]}', data=f'{get_page_callback}|{page_number - 1}')
         if page_number > 1
-        else Button.inline(' ', data='null'),
+        else emptyButton,
 
         Button.inline(page_info + ' | ' + i18n[lang]['cancel'], data='cancel')
         if display_cancel
@@ -131,7 +150,7 @@ def get_page_buttons(page_number: int,
 
         Button.inline(f'{i18n[lang]["next_page"]} >', data=f'{get_page_callback}|{page_number + 1}')
         if page_number < page_count
-        else Button.inline(' ', data='null'),
+        else emptyButton,
     ]
     return page_buttons
 
@@ -184,46 +203,65 @@ async def get_sub_choosing_buttons(user_id: int,
     return buttons + (tuple(page_buttons),) if page_buttons else buttons
 
 
-async def update_interval(feed: Union[db.Feed, int], new_interval: Optional[int] = None, force_update: bool = False):
-    if new_interval is not None and (not isinstance(new_interval, int) or new_interval <= 0):
-        raise ValueError('`new_interval` must be `None` or a positive integer')
-
+async def update_interval(feed: Union[db.Feed, db.Sub, int]):
     if isinstance(feed, int):
         feed = await db.Feed.get_or_none(id=feed)
+    elif isinstance(feed, db.Sub):
+        sub = feed
+        if not isinstance(sub.feed, db.Feed):
+            await sub.fetch_related('feed')
+        feed = sub.feed
 
     if feed is None:
         return
 
     default_interval = db.EffectiveOptions.default_interval
     curr_interval = feed.interval or default_interval
-    default_flag = False
+    set_to_default = False
 
-    if not new_interval:
-        sub_exist = await feed.subs.all().exists()
-        intervals = await feed.subs.filter(state=1).values_list('interval', flat=True)
-        if not sub_exist:  # no sub subs the feed, del the feed
-            await feed.delete()
-            db.effective_utils.EffectiveTasks.delete(feed.id)
-            return
-        if not intervals:  # no active sub subs the feed, deactivate the feed
-            await deactivate_feed(feed)
-            db.effective_utils.EffectiveTasks.delete(feed.id)
-            return
-        new_interval = min(intervals, key=lambda _: default_interval if _ is None else _) or default_interval
-        default_flag = new_interval == default_interval and new_interval not in intervals
-        force_update = True
+    sub_exist = await feed.subs.all().exists()
+    intervals = await feed.subs.filter(interval__not_isnull=True).values_list('interval', flat=True)
+    intervals += await feed.subs.filter(interval__isnull=True, user__interval__not_isnull=True) \
+        .values_list('user__interval', flat=True)
+    some_using_default = await feed.subs.filter(interval__isnull=True, user__interval__isnull=True).exists()
+    if not sub_exist:  # no sub subs the feed, del the feed
+        await feed.delete()
+        db.effective_utils.EffectiveTasks.delete(feed.id)
+        return
+    if not intervals and not some_using_default:  # no active sub subs the feed, deactivate the feed
+        if feed.state == 1:
+            feed.state = 0
+            feed.error_count = 0
+            feed.next_check_time = None
+            await feed.save()
+        db.effective_utils.EffectiveTasks.delete(feed.id)
+        return
+    new_interval = min(intervals) if intervals else None
+    if (new_interval is None or default_interval < new_interval) and some_using_default:
+        new_interval = default_interval
+        set_to_default = True
 
-    force_update = force_update and new_interval != curr_interval
-
-    if new_interval < curr_interval or force_update:  # if not force_update, will only reduce the interval
-        feed.interval = new_interval if not default_flag else None
+    feed_update_flag = False
+    if new_interval != curr_interval or (set_to_default and feed.interval is not None):
+        feed.interval = new_interval if not set_to_default else None
+        feed_update_flag = True
+    if feed.state != 1:
+        feed.state = 1
+        feed.error_count = 0
+        feed.next_check_time = None
+        feed_update_flag = True
+    if feed_update_flag:
         await feed.save()
-        if db.effective_utils.EffectiveTasks.get_interval(feed.id) != new_interval:
-            db.effective_utils.EffectiveTasks.update(feed.id, new_interval)
+    if db.effective_utils.EffectiveTasks.get_interval(feed.id) != new_interval:
+        db.effective_utils.EffectiveTasks.update(feed.id, new_interval)
 
 
 async def list_sub(user_id: int, *args, **kwargs) -> list[db.Sub]:
     return await db.Sub.filter(user=user_id, *args, **kwargs).prefetch_related('feed')
+
+
+async def count_sub(user_id: int, *args, **kwargs) -> int:
+    return await db.Sub.filter(user=user_id, *args, **kwargs).count()
 
 
 async def have_subs(user_id: int) -> bool:
@@ -251,6 +289,7 @@ async def deactivate_feed(feed: db.Feed) -> db.Feed:
         return feed
 
     feed.state = 0
+    feed.error_count = 0
     feed.next_check_time = None
     await feed.save()
     await asyncio.gather(
@@ -285,9 +324,8 @@ async def activate_or_deactivate_sub(user_id: int, sub: Union[db.Sub, int], acti
     if activate and feed.state != 1:
         await activate_feed(feed)
     else:
-        interval = sub.interval or db.EffectiveOptions.default_interval
         if _update_interval:
-            await update_interval(feed, new_interval=interval if activate else None)
+            await update_interval(feed)
 
     return sub
 
@@ -309,10 +347,10 @@ async def activate_or_deactivate_all_subs(user_id: int, activate: bool) -> tuple
             feed.error_count = 0
             feed.next_check_time = None
             feeds_to_update.append(feed)
-        interval = sub.interval or db.EffectiveOptions.default_interval
-        tasks.append(update_interval(feed, new_interval=interval if activate else None))
+        tasks.append(update_interval(feed))
     await db.Sub.bulk_update(subs, ['state'])
     if feeds_to_update:
         await db.Feed.bulk_update(feeds_to_update, ['state', 'error_count', 'next_check_time'])
-    await asyncio.gather(*tasks)
+    for task in tasks:
+        env.loop.create_task(task)
     return tuple(subs)

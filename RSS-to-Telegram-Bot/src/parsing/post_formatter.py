@@ -19,7 +19,7 @@ from . import utils, tgraph
 from .splitter import get_plain_text_length
 from .html_parser import parse
 from .html_node import *
-from .medium import Media, Image, Video, Audio, File
+from .medium import Media, Image, Video, Audio, File, construct_images_weserv_nl_url
 
 AUTO: Final = 0
 DISABLE: Final = -1
@@ -110,7 +110,8 @@ class PostFormatter:
                                  display_author: int = 0,
                                  display_via: int = 0,
                                  display_title: int = 0,
-                                 style: int = 0) -> tuple[str, bool, bool]:
+                                 style: int = 0,
+                                 display_media: int = 0) -> tuple[str, bool, bool]:
         """
         Get formatted post.
 
@@ -124,7 +125,8 @@ class PostFormatter:
         :param display_via: -2=completely disable, -1=disable but display link, 0=auto, 1=force display
         :param display_title: -1=disable, 0=auto, 1=force display
         :param style: 0=RSStT, 1=flowerss
-        :return: A formatted post str, and the media of the post
+        :param display_media: -1=disable, 0=enable
+        :return: (formatted post, need media, need linkpreview)
         """
         assert send_mode in {FORCE_LINK, AUTO, FORCE_TELEGRAPH, FORCE_MESSAGE}
         assert isinstance(length_limit, int) and length_limit >= 0
@@ -209,8 +211,10 @@ class PostFormatter:
         elif send_mode == FORCE_TELEGRAPH and self.telegraph_link is False:
             message_type = LINK_MESSAGE if self.link else NORMAL_MESSAGE
         else:  # AUTO
-            if self.media:
-                await self.media.validate()  # check media validity
+            # if display_media != DISABLE and self.media:
+            #     await self.media.validate()  # check media validity
+            media_msg_count = await self.media.estimate_message_counts() \
+                if (display_media != DISABLE and self.media) else 0
             normal_msg_post = self.generate_formatted_post(sub_title=sub_title,
                                                            tags=tags,
                                                            need_title=need_title,
@@ -220,13 +224,11 @@ class PostFormatter:
                                                            message_style=message_style)
             normal_msg_len = get_plain_text_length(normal_msg_post)
             if (
-                    (0 < length_limit < self.plain_length)  # length_limit == 0 means no limit
+                    (0 < length_limit <= self.plain_length)  # length_limit == 0 means no limit
                     or
-                    (not self.media and normal_msg_len > 4096)
+                    normal_msg_len > (4096 if not media_msg_count else 1024)
                     or
-                    (self.media and normal_msg_len > 1024)
-                    or
-                    await self.media.estimate_message_counts() > 1
+                    media_msg_count > 1
             ):
                 message_type = TELEGRAPH_MESSAGE
             else:
@@ -241,7 +243,7 @@ class PostFormatter:
             message_type = LINK_MESSAGE if self.link else NORMAL_MESSAGE
 
         # ---- determine need_media ----
-        need_media = message_type == NORMAL_MESSAGE and self.media
+        need_media = display_media != DISABLE and message_type == NORMAL_MESSAGE and self.media
 
         # ---- determine need_link_preview ----
         need_link_preview = not need_media and (link_preview == FORCE_ENABLE or message_type != NORMAL_MESSAGE)
@@ -430,6 +432,7 @@ class PostFormatter:
         self.media = parsed.media
         self.parsed_html = parsed.html
         self.plain_length = get_plain_text_length(self.parsed_html)
+        self.html = parsed.parser.html  # use a validated HTML
         self.parsed = True
         if self.enclosures:
             for enclosure in self.enclosures:
@@ -438,6 +441,9 @@ class PostFormatter:
                     continue
                 elif not enclosure.type:
                     medium = File(enclosure.url)
+                elif enclosure.type.find('webp') != -1 or enclosure.type.find('svg') != -1:
+                    medium = Image(enclosure.url)
+                    medium.url = construct_images_weserv_nl_url(enclosure.url)
                 elif enclosure.type.startswith('image/gif'):
                     medium = Audio(enclosure.url)
                 elif enclosure.type.startswith('audio'):

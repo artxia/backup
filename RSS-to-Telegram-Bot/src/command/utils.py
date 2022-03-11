@@ -28,16 +28,21 @@ def parse_command(command: str, max_split: int = 0) -> list[AnyStr]:
     return re.split(r'\s+', command.strip(), maxsplit=max_split)
 
 
-async def parse_command_get_sub_and_param(command: str, user_id: int, max_split: int = 0) \
+async def parse_command_get_sub_or_user_and_param(command: str,
+                                                  user_id: int,
+                                                  max_split: int = 0,
+                                                  allow_setting_user_default: bool = False) \
         -> tuple[Optional[db.Sub], Optional[str]]:
     args = parse_command(command, max_split=max_split)
-    sub = param = None
-    if len(args) >= 2 and args[1].isdigit() and int(args[1]) >= 1:
+    sub_or_user = param = None
+    if len(args) >= 1 and args[1] == 'default' and allow_setting_user_default:
+        sub_or_user = await db.User.get_or_none(id=user_id)
+    if len(args) >= 2 and args[1].isdecimal() and int(args[1]) >= 1:
         sub_id = int(args[1])
-        sub = await db.Sub.get_or_none(id=sub_id, user_id=user_id)
+        sub_or_user = await db.Sub.get_or_none(id=sub_id, user_id=user_id)
     if len(args) > 2:
         param = args[2]
-    return sub, param
+    return sub_or_user, param
 
 
 def parse_callback_data_with_page(callback_data: bytes) -> tuple[str, int]:
@@ -54,10 +59,10 @@ def parse_callback_data_with_page(callback_data: bytes) -> tuple[str, int]:
     return params, page
 
 
-def parse_sub_customization_callback_data(callback_data: bytes) \
+def parse_customization_callback_data(callback_data: bytes) \
         -> tuple[Optional[int], Optional[str], Optional[Union[int, str]], int]:
     """
-    callback data = command[={id}[,{action}[,{param}]]][|{page_number}]
+    callback data = command[={id}[,{action}[,{param}]]][|{page_number}] or command[={action}[,{param}]]
 
     :param callback_data: callback data
     :return: id, action, param
@@ -65,11 +70,19 @@ def parse_sub_customization_callback_data(callback_data: bytes) \
     callback_data = callback_data.decode().strip()
     args = callback_data.split('|')
     page = int(args[1]) if len(args) > 1 else 1
-    args = args[0].split('=')[-1].split(',')
+    args = args[0].split('=', 1)
+    if len(args) == 1:
+        return None, None, None, page
+    args = args[-1].split(',', 2)
 
-    _id: Optional[int] = int(args[0]) if len(args) >= 1 else None
-    action: Optional[str] = args[1] if len(args) >= 2 else None
-    param: Optional[Union[int, str]] = args[2] if len(args) >= 3 else None
+    _id: Optional[int] = None
+    if args[0].lstrip('-').isdecimal():
+        _id = int(args[0])
+        args = args[1:]
+    elif len(args) >= 3:
+        args = args[1:]
+    action: Optional[str] = args[0] if len(args) >= 1 else None
+    param: Optional[Union[int, str]] = args[1] if len(args) >= 2 else None
     if param and param.lstrip('-').isdecimal():
         param = int(param)
 
@@ -232,6 +245,10 @@ def command_gatekeeper(func: Optional[Callable] = None,
                 '__chat_action__'
             )
 
+            sender_state = sender_id and await db.User.get_or_none(id=sender_id).values_list('state', flat=True)
+            if not sender_state:
+                sender_state = 0  # default state
+
             # get the user's lang
             lang_in_db = await db.User.get_or_none(id=chat_id).values_list('lang', flat=True)
             lang = lang_in_db if lang_in_db != 'null' else None
@@ -258,15 +275,24 @@ def command_gatekeeper(func: Optional[Callable] = None,
                     logger.warning(f'Redirected {describe_user()} (using {command}) to the private chat with the bot')
                     raise events.StopPropagation
 
-            if (only_manager or not env.MULTIUSER) and sender_id != env.MANAGER:
+            permission_denied_not_manager = only_manager and sender_id != env.MANAGER
+            permission_denied_no_permission = (
+                    sender_id != env.MANAGER
+                    and ((not env.MULTIUSER and sender_state < 1) or sender_state < 0)
+            )
+            if permission_denied_not_manager or permission_denied_no_permission:
                 if is_chat_action:  # chat action, bypassing
                     raise events.StopPropagation
-                if not env.MULTIUSER and not only_manager and sender_id is None:  # anonymous admin
-                    await respond_or_answer(event, i18n[lang]['promote_to_admin_prompt'])
-                else:
-                    await respond_or_answer(event, i18n[lang]['permission_denied_not_bot_manager'])
+                await respond_or_answer(event,
+                                        i18n[lang]['permission_denied_not_bot_manager']
+                                        if permission_denied_not_manager
+                                        else i18n[lang]['permission_denied_no_permission'])
                 logger.warning(f'Refused {describe_user()} to use {command} '
-                               f'because the command can only be used by a bot manager')
+                               f'because ' + (
+                                   'the command can only be used by the bot manager'
+                                   if permission_denied_not_manager else
+                                   'the user has no permission to use the command'
+                               ))
                 raise events.StopPropagation
 
             if is_inline:
@@ -481,8 +507,8 @@ class GroupMigratedAction(events.ChatAction):
 
     After a group migration, below updates will be sent:
     UpdateChannel(*),
-    UpdateNewChannelMessage(message=MessageService(action=MessageActionChannelMigrateFrom(*)),
-    UpdateNewChannelMessage(message=MessageService(action=MessageActionChatMigrateTo(*))
+    UpdateNewChannelMessage(message=MessageService(action=MessageActionChatMigrateTo(*)))
+    UpdateNewChannelMessage(message=MessageService(action=MessageActionChannelMigrateFrom(*))),
 
     This class only listens to the latest one.
     """
@@ -496,33 +522,6 @@ class GroupMigratedAction(events.ChatAction):
             action = update.message.action
             if isinstance(action, types.MessageActionChannelMigrateFrom):
                 return cls.Event(msg)
-
-
-def get_commands_list(lang: Optional[str] = None, manager: bool = False) -> list[types.BotCommand]:
-    commands = [
-        types.BotCommand(command="sub", description=i18n[lang]['cmd_description_sub']),
-        types.BotCommand(command="unsub", description=i18n[lang]['cmd_description_unsub']),
-        types.BotCommand(command="unsub_all", description=i18n[lang]['cmd_description_unsub_all']),
-        types.BotCommand(command="list", description=i18n[lang]['cmd_description_list']),
-        types.BotCommand(command="set", description=i18n[lang]['cmd_description_set']),
-        types.BotCommand(command="import", description=i18n[lang]['cmd_description_import']),
-        types.BotCommand(command="export", description=i18n[lang]['cmd_description_export']),
-        types.BotCommand(command="activate_subs", description=i18n[lang]['cmd_description_activate_subs']),
-        types.BotCommand(command="deactivate_subs", description=i18n[lang]['cmd_description_deactivate_subs']),
-        types.BotCommand(command="version", description=i18n[lang]['cmd_description_version']),
-        types.BotCommand(command="lang", description=i18n[lang]['cmd_description_lang']),
-        types.BotCommand(command="help", description=i18n[lang]['cmd_description_help']),
-    ]
-
-    if manager:
-        commands.extend(
-            (
-                types.BotCommand(command="test", description=i18n[lang]['cmd_description_test']),
-                types.BotCommand(command="set_option", description=i18n[lang]['cmd_description_set_option']),
-            )
-        )
-
-    return commands
 
 
 async def set_bot_commands(scope: Union[types.BotCommandScopeDefault,

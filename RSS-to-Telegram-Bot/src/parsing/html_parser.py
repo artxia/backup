@@ -3,7 +3,6 @@ from collections.abc import Iterator, Iterable
 from typing import Union, Optional
 
 import re
-import minify_html
 from bs4 import BeautifulSoup
 from bs4.element import NavigableString, PageElement, Tag
 from urllib.parse import urlparse, urljoin
@@ -31,12 +30,7 @@ class Parser:
         :param html: HTML content
         :param feed_link: feed link (use for resolve relative urls)
         """
-        self.html = minify_html.minify(html,
-                                       do_not_minify_doctype=True,
-                                       keep_closing_tags=True,
-                                       keep_spaces_between_attributes=True,
-                                       ensure_spec_compliant_unquoted_attribute_values=True,
-                                       remove_processing_instructions=True)
+        self.html = html
         self.soup = BeautifulSoup(self.html, 'lxml')
         self.media: Media = Media()
         self.html_tree = HtmlTree('')
@@ -111,7 +105,7 @@ class Parser:
                 return None
             if not is_absolute_link(href) and self.feed_link:
                 href = urljoin(self.feed_link, href)
-            return Link(await self._parse_item(soup.children), href)
+            return Link(text, href)
 
         if tag == 'img':
             src, srcset = soup.get('src'), soup.get('srcset')
@@ -161,11 +155,12 @@ class Parser:
                     continue
                 if not is_absolute_link(_src) and self.feed_link:
                     _src = urljoin(self.feed_link, _src)
-                if urlparse(_src).path.endswith(('.gif', '.gifv', '.webm', '.mp4', '.m4v', '.webp')):
+                path = urlparse(_src).path
+                if path.endswith(('.gif', '.gifv', '.webm', '.mp4', '.m4v')):
                     is_gif = True
                 multi_src.append(_src)
             if multi_src:
-                self.media.add(Image(multi_src) if not is_gif else Animation(multi_src))
+                self.media.add(Animation(multi_src) if is_gif else Image(multi_src))
             return None
 
         if tag == 'video':
@@ -213,25 +208,14 @@ class Parser:
             return ListItem(text) if text else None
 
         if tag == 'iframe':
-            text = await self._parse_item(soup.children)
+            # text = await self._parse_item(soup.children)
             src = soup.get('src')
             if not src:
                 return None
             if not is_absolute_link(src) and self.feed_link:
                 src = urljoin(self.feed_link, src)
-            if not text:
-                # noinspection PyBroadException
-                try:
-                    page = await web.get(src, timeout=3, decode=True, semaphore=False)
-                    if page.status != 200:
-                        raise ValueError
-                    text = BeautifulSoup(page.content, 'lxml').title.text
-                except Exception:
-                    pass
-                finally:
-                    if not text:
-                        text = urlparse(src).netloc
-            return Text([Br(2), Link(f'iframe ({text})', param=src), Br(2)])
+            title = await web.get_page_title(src)
+            return Text([Br(2), Link(f'iframe ({title})', param=src), Br(2)])
 
         in_list = tag == 'ol' or tag == 'ul'
         for child in soup.children:
@@ -271,6 +255,7 @@ class Parsed:
     html_tree: HtmlTree
     media: Media
     html: str
+    parser: Parser
 
 
 async def parse(html: str, feed_link: Optional[str] = None):
@@ -280,4 +265,4 @@ async def parse(html: str, feed_link: Optional[str] = None):
     """
     parser = Parser(html=html, feed_link=feed_link)
     await parser.parse()
-    return Parsed(html_tree=parser.html_tree, media=parser.media, html=parser.get_parsed_html())
+    return Parsed(html_tree=parser.html_tree, media=parser.media, html=parser.get_parsed_html(), parser=parser)

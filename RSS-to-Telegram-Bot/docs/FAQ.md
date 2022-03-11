@@ -2,7 +2,7 @@
 
 ### **Q**: Why some posts were missing? / Why did the bot respond to me so slowly?
 
-**A**: Due to Telegram's restrictions, if too many messages are sent in a short period, the bot will get flood-controlled and have to wait for a certain time. Though the bot will retry, if still gets flood controlled, the message will be dropped. **Avoid subscribing to too many feeds, <u>especially in channels and groups</u> (they have a much stricter flood control threshold).**
+**A**: Due to Telegram's restrictions, if too many messages are sent in a short period, the bot will get flood-controlled and have to wait for a certain time. Though the bot will retry, if still gets flood controlled, the message will be dropped. **Avoid subscribing to too many feeds, <ins>especially in channels and groups</ins> (they have a much stricter flood control threshold).**
 
 ### **Q**: How to use the bot in my channel or group?
 
@@ -23,5 +23,11 @@
 ### **Q**: I want my bot to serve me only. What should I do?
 
 Set the env variable `MULTIUSER` to `0`.  
-However, if you need to use the bot in a channel, you cannot switch off the multi-user mode for the moment. As a temporary workaround, you may first switch on the multi-user mode, subscribe to the feeds you like in your channel, and then switch off the multi-user mode.    
-Using the bot in a group is possible even if you don't have the multi-user mode enabled, as long as you are an administrator of the group. [Make sure that the bot can identify you](FAQ.md#q-how-to-use-the-bot-in-my-channel-or-group), especially if you are an anonymous administrator of the group.
+If you need to use the bot in a channel, read the next question.  
+Using the bot in a group is possible even if you don't have the multi-user mode enabled, as long as you are a non-anonymous administrator of the group. If you are an anonymous administrator of the group, read the next question.
+
+### **Q**: I want my bot to serve the users/channels/groups I specify only. What should I do?
+
+Firstly, set the env variable `MULTIUSER` to `0`. This will make guests unable to use the bot.  
+If you want to allow a certain user to use the bot, send `/user_info user_id` or `/user_info @username` to the bot and promote their to "User".  
+If you want to allow a certain channel/group to use the bot, you should promote both the channel/group itself and at least one of its administrators to "User". Only the promoted administrators can operate the bot in the channel/group.

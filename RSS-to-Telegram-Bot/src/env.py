@@ -152,13 +152,22 @@ else:
 
 PROXY_BYPASS_PRIVATE: Final = __bool_parser(os.environ.get('PROXY_BYPASS_PRIVATE'))
 PROXY_BYPASS_DOMAINS: Final = __list_parser(os.environ.get('PROXY_BYPASS_DOMAINS'))
-USER_AGENT: Final = os.environ.get('USER_AGENT') or 'RSStT/2.0 RSS Reader'
+USER_AGENT: Final = os.environ.get('USER_AGENT') or 'RSStT/2.1 RSS Reader'
 IPV6_PRIOR: Final = __bool_parser(os.environ.get('IPV6_PRIOR'))
 
 # ----- img relay server config -----
 _img_relay_server = os.environ.get('IMG_RELAY_SERVER') or 'https://rsstt-img-relay.rongrong.workers.dev/'
-IMG_RELAY_SERVER: Final = _img_relay_server + ('' if _img_relay_server.endswith(('/', '=')) else '/')
+IMG_RELAY_SERVER: Final = ('https://' if not _img_relay_server.startswith('http') else '') \
+                          + _img_relay_server \
+                          + ('' if _img_relay_server.endswith(('/', '=')) else '/')
 del _img_relay_server
+
+# ----- images.weserv.nl config -----
+_images_weserv_nl = os.environ.get('IMAGES_WESERV_NL') or 'https://images.weserv.nl/'
+IMAGES_WESERV_NL: Final = ('https://' if not _images_weserv_nl.startswith('http') else '') \
+                          + _images_weserv_nl \
+                          + ('' if _images_weserv_nl.endswith('/') else '/')
+del _images_weserv_nl
 
 # ----- db config -----
 _database_url = os.environ.get('DATABASE_URL') or 'sqlite://config/db.sqlite3?journal_mode=OFF'
