@@ -1,12 +1,11 @@
 from __future__ import annotations
 from collections.abc import Callable
 from typing import Union, Optional, AnyStr, Any
-from src.compat import nullcontext, ssl_create_default_context
+from src.compat import nullcontext, ssl_create_default_context, Final
 
 import re
 import asyncio
 import functools
-import aiodns
 import aiohttp
 import feedparser
 import PIL.Image
@@ -17,6 +16,8 @@ from io import BytesIO, SEEK_END
 from concurrent.futures import ThreadPoolExecutor
 from aiohttp_socks import ProxyConnector
 from aiohttp_retry import RetryClient, ExponentialRetry
+from dns.asyncresolver import resolve
+from dns.exception import DNSException
 from ssl import SSLError
 from ipaddress import ip_network, ip_address
 from urllib.parse import urlparse
@@ -29,39 +30,49 @@ from asyncstdlib.functools import lru_cache
 from src import env, log, locks
 from src.i18n import i18n
 
-PROXY = env.R_PROXY.replace('socks5h', 'socks5').replace('sock4a', 'socks4') if env.R_PROXY else None
-PRIVATE_NETWORKS = tuple(ip_network(ip_block) for ip_block in
-                         ('127.0.0.0/8', '::1/128',  # loopback is not a private network, list in here for convenience
-                          '169.254.0.0/16', 'fe80::/10',  # link-local address
-                          '10.0.0.0/8',  # class A private network
-                          '172.16.0.0/12',  # class B private networks
-                          '192.168.0.0/16',  # class C private networks
-                          'fc00::/7',  # ULA
-                          ))
+SOI: Final = b'\xff\xd8'
+EOI: Final = b'\xff\xd9'
 
-HEADER_TEMPLATE = {
+IMAGE_MAX_FETCH_SIZE: Final = 1024 * 5
+IMAGE_ITER_CHUNK_SIZE: Final = 128
+IMAGE_READ_BUFFER_SIZE: Final = 1
+
+DEFAULT_READ_BUFFER_SIZE: Final = 2 ** 16
+
+PROXY: Final = env.R_PROXY.replace('socks5h', 'socks5').replace('sock4a', 'socks4') if env.R_PROXY else None
+PRIVATE_NETWORKS: Final = tuple(ip_network(ip_block) for ip_block in
+                                ('127.0.0.0/8', '::1/128',
+                                 # loopback is not a private network, list in here for convenience
+                                 '169.254.0.0/16', 'fe80::/10',  # link-local address
+                                 '10.0.0.0/8',  # class A private network
+                                 '172.16.0.0/12',  # class B private networks
+                                 '192.168.0.0/16',  # class C private networks
+                                 'fc00::/7',  # ULA
+                                 ))
+
+HEADER_TEMPLATE: Final = {
     'User-Agent': env.USER_AGENT,
     'Accept': '*/*',
     'Accept-Encoding': 'gzip, deflate, br',
 }
-FEED_ACCEPT = 'application/rss+xml, application/rdf+xml, application/atom+xml, ' \
-              'application/xml;q=0.9, text/xml;q=0.8, text/*;q=0.7, application/*;q=0.6'
+FEED_ACCEPT: Final = 'application/rss+xml, application/rdf+xml, application/atom+xml, ' \
+                     'application/xml;q=0.9, text/xml;q=0.8, text/*;q=0.7, application/*;q=0.6'
 
-EXCEPTIONS_SHOULD_RETRY = (asyncio.TimeoutError,
-                           # aiohttp.ClientPayloadError,
-                           # aiohttp.ClientResponseError,
-                           # aiohttp.ClientConnectionError,
-                           aiohttp.ServerConnectionError,
-                           TimeoutError)
+EXCEPTIONS_SHOULD_RETRY: Final = (asyncio.TimeoutError,
+                                  # aiohttp.ClientPayloadError,
+                                  # aiohttp.ClientResponseError,
+                                  # aiohttp.ClientConnectionError,
+                                  aiohttp.ServerConnectionError,
+                                  TimeoutError,
+                                  ConnectionError)
 
-RETRY_OPTION = ExponentialRetry(attempts=2, start_timeout=1, exceptions=set(EXCEPTIONS_SHOULD_RETRY))
+RETRY_OPTION: Final = ExponentialRetry(attempts=2, start_timeout=1, exceptions=set(EXCEPTIONS_SHOULD_RETRY))
 
 PIL.ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 logger = log.getLogger('RSStT.web')
 
 _feedparser_thread_pool = ThreadPoolExecutor(1, 'feedparser_')
-_resolver = aiodns.DNSResolver(timeout=3, loop=env.loop)
 
 contentDispositionFilenameParser = partial(re.compile(r'(?<=filename=").+?(?=")').search, flags=re.I)
 
@@ -145,7 +156,19 @@ async def __norm_callback(response: aiohttp.ClientResponse, decode: bool = False
     content_type = response.headers.get('Content-Type')
     if not intended_content_type or not content_type or content_type.startswith(intended_content_type):
         if decode:
-            return await response.text()
+            body = await response.read()
+            xml_header = body.split(b'\n', 1)[0]
+            if xml_header.find(b'<?xml') == 0 and xml_header.find(b'?>') != -1:
+                try:
+                    encoding = BeautifulSoup(xml_header, 'lxml-xml').original_encoding
+                    return body.decode(encoding=encoding, errors='replace')
+                except (LookupError, RuntimeError):
+                    pass
+            try:
+                encoding = response.get_encoding()
+                return body.decode(encoding=encoding, errors='replace')
+            except (LookupError, RuntimeError):
+                return body.decode(encoding='utf-8', errors='replace')
         elif max_size is None:
             return await response.read()
         elif max_size > 0:
@@ -175,24 +198,26 @@ async def get(url: str, timeout: Optional[float] = None, semaphore: Union[bool, 
         _get(
             url=url, timeout=timeout, semaphore=semaphore, headers=headers,
             resp_callback=partial(__norm_callback, decode=decode, max_size=max_size,
-                                  intended_content_type=intended_content_type)
+                                  intended_content_type=intended_content_type),
+            read_bufsize=max_size or DEFAULT_READ_BUFFER_SIZE, read_until_eof=not max_size
         ),
         wait_for_timeout)
 
 
 async def _get(url: str, resp_callback: Callable, timeout: Optional[float] = None,
-               semaphore: Union[bool, asyncio.Semaphore] = None, headers: Optional[dict] = None) -> WebResponse:
+               semaphore: Union[bool, asyncio.Semaphore] = None, headers: Optional[dict] = None,
+               read_bufsize: int = DEFAULT_READ_BUFFER_SIZE, read_until_eof: bool = True) -> WebResponse:
     host = urlparse(url).hostname
     semaphore_to_use = locks.hostname_semaphore(host, parse=False) if semaphore in (None, True) \
         else (semaphore or nullcontext())
-    v6_address = None
+    v6_rr_set = None
     try:
-        v6_address = await asyncio.wait_for(_resolver.query(host, 'AAAA'), timeout=1) if env.IPV6_PRIOR else None
-    except (aiodns.error.DNSError, asyncio.TimeoutError):
+        v6_rr_set = (await resolve(host, 'AAAA', lifetime=1)).rrset if env.IPV6_PRIOR else None
+    except DNSException:
         pass
     except Exception as e:
         logger.debug(f'Error occurred when querying {url} AAAA:', exc_info=e)
-    socket_family = AF_INET6 if v6_address else 0
+    socket_family = AF_INET6 if v6_rr_set else 0
 
     _headers = HEADER_TEMPLATE.copy()
     if headers:
@@ -218,7 +243,8 @@ async def _get(url: str, resp_callback: Callable, timeout: Optional[float] = Non
                 async with semaphore_to_use:
                     async with RetryClient(retry_options=RETRY_OPTION, connector=proxy_connector,
                                            timeout=aiohttp.ClientTimeout(total=timeout), headers=_headers) as session:
-                        async with session.get(url) as response:
+                        async with session.get(url,
+                                               read_bufsize=read_bufsize, read_until_eof=read_until_eof) as response:
                             status = response.status
                             content = None
                             if status == 200:
@@ -310,25 +336,43 @@ async def feed_get(url: str, timeout: Optional[float] = None, web_semaphore: Uni
 async def __medium_info_callback(response: aiohttp.ClientResponse) -> tuple[int, int]:
     content_type = response.headers.get('Content-Type', '').lower()
     content_length = int(response.headers.get('Content-Length', '1024'))
-    max_read_length = min(content_length, 5 * 1024)
-    if not (
+    content = response.content
+    preloaded_length = content.total_bytes  # part of response body already came with the response headers
+    if not (  # hey, here is a `not`!
             # a non-webp-or-svg image
             (content_type.startswith('image') and content_type.find('webp') == -1 and content_type.find('svg') == -1)
             or (
                     # an un-truncated webp image
                     (content_type.find('webp') != -1 or content_type == 'application/octet-stream')
-                    and content_length <= max_read_length  # PIL cannot handle a truncated webp image
+                    # PIL cannot handle a truncated webp image
+                    and content_length <= max(preloaded_length, IMAGE_MAX_FETCH_SIZE)
             )
     ):
         return -1, -1
-    is_jpeg = content_type.startswith('image/jpeg')
+    is_jpeg = None
     already_read = 0
-    iter_length = 128
     buffer = BytesIO()
-    async for chunk in response.content.iter_chunked(iter_length):
-        already_read += len(chunk)
-        buffer.seek(0, SEEK_END)
-        buffer.write(chunk)
+    eof_flag = False
+    while True:
+        if eof_flag or already_read >= IMAGE_MAX_FETCH_SIZE:
+            break
+
+        curr_chunk_length = 0
+        preloaded_length = content.total_bytes - already_read
+        while preloaded_length > IMAGE_READ_BUFFER_SIZE or curr_chunk_length < IMAGE_ITER_CHUNK_SIZE:
+            # get almost all preloaded bytes, but leaving some to avoid next automatic preloading
+            chunk = await content.read(max(preloaded_length - IMAGE_READ_BUFFER_SIZE, IMAGE_READ_BUFFER_SIZE))
+            if chunk == b'':  # EOF
+                eof_flag = True
+                break
+            if is_jpeg is None:
+                is_jpeg = chunk.startswith(SOI)
+            already_read += len(chunk)
+            curr_chunk_length += len(chunk)
+            buffer.seek(0, SEEK_END)
+            buffer.write(chunk)
+            preloaded_length = content.total_bytes - already_read
+
         # noinspection PyBroadException
         try:
             image = PIL.Image.open(buffer)
@@ -339,19 +383,30 @@ async def __medium_info_callback(response: aiohttp.ClientResponse) -> tuple[int,
         except Exception:
             if is_jpeg:
                 file_header = buffer.getvalue()
-                pointer = -1
-                for marker in (b'\xff\xc2', b'\xff\xc1', b'\xff\xc0'):
-                    p = file_header.find(marker)
-                    if p != -1:
-                        pointer = p
-                        break
-                if pointer != -1 and pointer + 9 <= len(file_header):
-                    width = int(file_header[pointer + 7:pointer + 9].hex(), 16)
-                    height = int(file_header[pointer + 5:pointer + 7].hex(), 16)
-                    return width, height
-
-        if already_read >= max_read_length:
-            return -1, -1
+                find_start_pos = 0
+                for _ in range(3):
+                    pointer = -1
+                    for marker in (b'\xff\xc2', b'\xff\xc1', b'\xff\xc0'):
+                        p = file_header.find(marker, find_start_pos)
+                        if p != -1:
+                            pointer = p
+                            break
+                    if pointer != -1 and pointer + 9 <= len(file_header):
+                        if file_header.count(EOI, 0, pointer) != file_header.count(SOI, 0, pointer) - 1:
+                            # we are currently entering the thumbnail in Exif, bypassing...
+                            # (why the specifications makers made Exif so freaky?)
+                            eoi_pos = file_header.find(EOI, pointer)
+                            if eoi_pos == -1:
+                                break  # no EOI found, we could never leave the thumbnail...
+                            find_start_pos = eoi_pos + len(EOI)
+                            continue
+                        width = int(file_header[pointer + 7:pointer + 9].hex(), 16)
+                        height = int(file_header[pointer + 5:pointer + 7].hex(), 16)
+                        if min(width, height) <= 0:
+                            find_start_pos = pointer + 1
+                            continue
+                        return width, height
+                    break
     return -1, -1
 
 
@@ -360,9 +415,10 @@ async def get_medium_info(url: str) -> Optional[tuple[int, int, int, Optional[st
     if url.startswith('data:'):
         return None
     try:
-        r = await _get(url, resp_callback=__medium_info_callback)
+        r = await _get(url, timeout=6, resp_callback=__medium_info_callback,
+                       read_bufsize=IMAGE_READ_BUFFER_SIZE, read_until_eof=False)
         if r.status != 200:
-            raise ValueError('status code not 200')
+            raise ValueError(f'status code is not 200, but {r.status}')
     except Exception as e:
         logger.debug(f'Medium fetch failed: {url}', exc_info=e)
         return None

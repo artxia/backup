@@ -178,6 +178,10 @@ del _database_url
 # ----- debug config -----
 DEBUG: Final = __bool_parser(os.environ.get('DEBUG'))
 
+# ----- environment config -----
+RAILWAY_STATIC_URL: Final = os.environ.get('RAILWAY_STATIC_URL')
+PORT: Final = int(os.environ.get('PORT', 0)) or (8080 if RAILWAY_STATIC_URL else None)
+
 # !!!!! DEPRECATED WARNING !!!!!
 if os.environ.get('DELAY'):
     logging.warning('Env var "DELAY" is DEPRECATED and of no use!\n'
@@ -211,7 +215,5 @@ bot_id: Optional[int] = None  # placeholder
 bot_peer: Optional[User] = None  # placeholder
 bot_input_peer: Optional[InputPeerUser] = None  # placeholder
 
-if os.name == "nt":  # workaround for aiodns on Windows
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)

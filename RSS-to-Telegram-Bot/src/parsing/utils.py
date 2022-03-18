@@ -4,21 +4,28 @@ from typing import Optional, Sequence, Union
 import re
 import json
 from bs4 import BeautifulSoup
+from bs4.element import Tag
 from minify_html import minify
 from html import unescape
 from emoji import emojize
 from telethon.tl.types import TypeMessageEntity
 from telethon.helpers import add_surrogate
 from functools import partial
+from urllib.parse import urljoin
 
 from src import log
 
 logger = log.getLogger('RSStT.parsing')
 
 stripBr = partial(re.compile(r'\s*<br\s*/?>\s*').sub, '<br/>')
-stripLineEnd = partial(re.compile(r'[ 　\xa0\t\r\u200b\u2006\u2028\u2029]+\n').sub, '\n')  # use firstly
+stripLineEnd = partial(re.compile(r'[ 　\t\r\u2028\u2029]+\n').sub, '\n')  # use firstly
 stripNewline = partial(re.compile(r'[\f\n\u2028\u2029]{3,}').sub, '\n\n')  # use secondly
 stripAnySpace = partial(re.compile(r'\s+').sub, ' ')
+replaceInvalidSpace = partial(
+    re.compile(r'[\xa0\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u200b\u200c\u200d]').sub, ' '
+)
+isAbsoluteHttpLink = re.compile(r'^https?://').match
+isSmallIcon = re.compile(r'(width|height): ?(([012]?\d|30)(\.\d)?px|([01](\.\d)?|2)r?em)').search
 
 
 class Enclosure:
@@ -40,8 +47,10 @@ with open('src/parsing/emojify.json', 'r', encoding='utf-8') as emojify_json:
     emoji_dict = json.load(emojify_json)
 
 
-def is_absolute_link(link: str) -> bool:
-    return link.startswith('http://') or link.startswith('https://')
+def resolve_relative_link(base: str, url: str) -> str:
+    if isAbsoluteHttpLink(url) or not (base and url):
+        return url
+    return urljoin(base, url)
 
 
 def emojify(xml):
@@ -50,6 +59,19 @@ def emojify(xml):
         # emojify weibo emoticons, get all here: https://api.weibo.com/2/emotions.json?source=1362404091
         xml = xml.replace(f'[{emoticon}]', emoji)
     return xml
+
+
+def is_emoticon(tag: Tag) -> bool:
+    if tag.name != 'img':
+        return False
+    src = tag.get('src', '')
+    alt, _class = tag.get('alt', ''), tag.get('class', '')
+    style, width, height = tag.get('style', ''), tag.get('width', ''), tag.get('height', '')
+    width = int(width) if width and width.isdigit() else float('inf')
+    height = int(height) if height and height.isdigit() else float('inf')
+    return (width <= 30 or height <= 30 or isSmallIcon(style)
+            or 'emoji' in _class or 'emoticon' in _class or (alt.startswith(':') and alt.endswith(':'))
+            or src.startswith('data:'))
 
 
 def html_validator(html: str) -> str:
@@ -62,13 +84,14 @@ def html_validator(html: str) -> str:
                   keep_spaces_between_attributes=True,
                   ensure_spec_compliant_unquoted_attribute_values=True,
                   remove_processing_instructions=True)
+    html = replaceInvalidSpace(html)
     return html
 
 
 def html_space_stripper(s: str, enable_emojify: bool = False) -> str:
     if not s:
         return s
-    s = stripAnySpace(unescape(s)).strip()
+    s = stripAnySpace(replaceInvalidSpace(unescape(s))).strip()
     return emojify(s) if enable_emojify else s
 
 

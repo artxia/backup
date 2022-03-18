@@ -1,4 +1,6 @@
+from __future__ import annotations
 from typing import Optional, Union
+
 from telethon import events, types, Button
 from telethon.tl.patched import Message
 from telethon.errors import RPCError
@@ -47,6 +49,8 @@ async def cmd_or_callback_help(event: Union[events.NewMessage.Event, Message, ev
                                lang: Optional[str] = None,
                                **__):  # callback data: help; command: /help
     msg = i18n[lang]['help_msg_html' if event.chat_id != env.MANAGER else 'manager_help_msg_html']
+    if event.is_private:
+        msg += '\n\n' + i18n[lang]['usage_in_channel_or_group_prompt_html']
     await event.respond(msg, parse_mode='html') \
         if isinstance(event, events.NewMessage.Event) or not hasattr(event, 'edit') \
         else await event.edit(msg, parse_mode='html')

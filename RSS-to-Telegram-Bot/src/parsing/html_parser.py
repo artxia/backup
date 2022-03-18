@@ -5,15 +5,14 @@ from typing import Union, Optional
 import re
 from bs4 import BeautifulSoup
 from bs4.element import NavigableString, PageElement, Tag
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urlparse
 from attr import define
 
 from src import web
 from .medium import Video, Image, Media, Animation, Audio
 from .html_node import *
-from .utils import stripNewline, stripLineEnd, is_absolute_link, emojify
+from .utils import stripNewline, stripLineEnd, isAbsoluteHttpLink, resolve_relative_link, emojify, is_emoticon
 
-isSmallIcon = re.compile(r'(width|height): ?(([012]?\d|30)(\.\d)?px|([01](\.\d)?|2)r?em)').search
 srcsetParser = re.compile(r'(?:^|,\s*)'
                           r'(?P<url>\S+)'  # allow comma here because it is valid in URL
                           r'(?:\s+'
@@ -103,22 +102,19 @@ class Parser:
             href = soup.get("href")
             if not href:
                 return None
-            if not is_absolute_link(href) and self.feed_link:
-                href = urljoin(self.feed_link, href)
+            href = resolve_relative_link(self.feed_link, href)
+            if not isAbsoluteHttpLink(href):
+                if href.startswith('javascript'):  # drop javascript links
+                    return text
+                return Text([Text(f'{text} ('), Code(href), Text(')')])
             return Link(text, href)
 
         if tag == 'img':
             src, srcset = soup.get('src'), soup.get('srcset')
             if not (src or srcset):
                 return None
-            alt, _class = soup.get('alt', ''), soup.get('class', '')
-            style, width, height = soup.get('style', ''), soup.get('width', ''), soup.get('height', '')
-            width = int(width) if width and width.isdigit() else float('inf')
-            height = int(height) if height and height.isdigit() else float('inf')
-            # drop icons
-            if width <= 30 or height <= 30 or isSmallIcon(style) \
-                    or 'emoji' in _class or (alt.startswith(':') and alt.endswith(':')) \
-                    or (src and src.startswith('data:')):
+            if is_emoticon(soup):
+                alt = soup.get('alt')
                 return Text(emojify(alt)) if alt else None
             _multi_src = []
             if srcset:
@@ -153,8 +149,7 @@ class Parser:
             for _src in _multi_src:
                 if not isinstance(_src, str):
                     continue
-                if not is_absolute_link(_src) and self.feed_link:
-                    _src = urljoin(self.feed_link, _src)
+                _src = resolve_relative_link(self.feed_link, _src)
                 path = urlparse(_src).path
                 if path.endswith(('.gif', '.gifv', '.webm', '.mp4', '.m4v')):
                     is_gif = True
@@ -212,8 +207,7 @@ class Parser:
             src = soup.get('src')
             if not src:
                 return None
-            if not is_absolute_link(src) and self.feed_link:
-                src = urljoin(self.feed_link, src)
+            src = resolve_relative_link(self.feed_link, src)
             title = await web.get_page_title(src)
             return Text([Br(2), Link(f'iframe ({title})', param=src), Br(2)])
 
@@ -238,8 +232,7 @@ class Parser:
         for _src in _multi_src:
             if not isinstance(_src, str):
                 continue
-            if not is_absolute_link(_src) and self.feed_link:
-                _src = urljoin(self.feed_link, _src)
+            _src = resolve_relative_link(self.feed_link, _src)
             multi_src.append(_src)
         return multi_src
 

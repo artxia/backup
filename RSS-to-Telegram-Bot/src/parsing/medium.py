@@ -12,7 +12,8 @@ from telethon.errors import FloodWaitError, SlowModeWaitError, ServerError
 from urllib.parse import urlencode
 
 from src import env, log, web, locks
-from src.parsing.html_node import Link, Br, Text, HtmlTree
+from .html_node import Code, Link, Br, Text, HtmlTree
+from .utils import isAbsoluteHttpLink
 from src.exceptions import InvalidMediaErrors, ExternalMediaFetchFailedErrors, UserBlockedErrors
 
 logger = log.getLogger('RSStT.medium')
@@ -218,7 +219,11 @@ class Medium:
                 error_tries += 1
 
     def get_link_html_node(self):
-        return Link(self.type, param=self.original_urls[0])
+        url = self.original_urls[0]
+        if isAbsoluteHttpLink(url):
+            return Link(self.type, param=self.original_urls[0])
+        else:
+            return Text([Text(f'{self.type} ('), Code(url), Text(')')])
 
     async def validate(self, flush: bool = False) -> bool:
         if self.valid is not None and not flush:  # already validated
@@ -230,10 +235,18 @@ class Medium:
         async with self.validating_lock:
             while self.urls:
                 url = self.urls.pop(0)
+                if not isAbsoluteHttpLink(url):  # bypass non-http links
+                    continue
                 medium_info = await web.get_medium_info(url)
                 if medium_info is None:
                     continue
                 self.size, self.width, self.height, self.content_type = medium_info
+                if self.type == IMAGE and self.size <= self.maxSize and min(self.width, self.height) == -1 \
+                        and self.content_type and self.content_type.startswith('image') \
+                        and self.content_type.find('webp') == -1 and self.content_type.find('svg') == -1 \
+                        and not url.startswith(env.IMAGES_WESERV_NL):
+                    # enforcing dimension detection for images
+                    self.width, self.height = await detect_image_dimension_via_images_weserv_nl(url)
                 self.max_width = max(self.max_width, self.width)
                 self.max_height = max(self.max_height, self.height)
 
@@ -264,7 +277,7 @@ class Medium:
                             0.05 < self.width / self.height < 20
                             and
                             # Telegram downsizes images to fit 1280x1280. If not downsized a lot, passing
-                            max(self.max_width, self.max_height) <= 1280 * 1.5
+                            0 < max(self.max_width, self.max_height) <= 1280 * 1.5
                     ):
                         self.valid = True
                     # let long images fall back to file
@@ -273,6 +286,13 @@ class Medium:
                         self.urls = []  # clear the urls, force fall back to file
                 elif self.size <= self.maxSize:  # valid
                     self.valid = True
+                else:
+                    self.valid = False
+
+                # some images cannot be sent as file directly, if so, images.weserv.nl may help
+                if self.type == FILE and self.content_type and self.content_type.startswith('image') \
+                        and not url.startswith(env.IMAGES_WESERV_NL):
+                    self.urls.append(construct_images_weserv_nl_url_convert_to_jpg(url))
 
                 if self.valid:
                     self.chosen_url = url
@@ -556,23 +576,6 @@ class Media:
         :return: ((uploaded/original medium, medium type)), invalid media html node)
         """
         await self.validate()
-        async with self.modify_lock:
-            # at least a file and an image
-            if (
-                    sum(isinstance(medium.type_fallback_chain(), File)
-                        for medium in self._media
-                        if not medium.drop_silently) > 0
-                    and
-                    sum(isinstance(medium.type_fallback_chain(), Image)
-                        for medium in self._media
-                        if not medium.drop_silently) > 0
-            ):
-                # fall back all image to files
-                await asyncio.gather(
-                    *(medium.type_fallback()
-                      for medium in self._media
-                      if isinstance(medium.type_fallback_chain(), Image) and not medium.drop_silently)
-                )
 
         media_and_types: tuple[
             Union[tuple[Union[TypeMessageMedia, Medium, None], Optional[TypeMedium]], BaseException],
@@ -706,15 +709,35 @@ class Media:
 
 
 def construct_images_weserv_nl_url(url: str,
-                                   width: int = 1280,
-                                   height: int = 1280,
-                                   fit: str = 'inside',
-                                   output_format: str = 'png') -> str:
-    query_string = urlencode({
+                                   width: Optional[int] = 2560,
+                                   height: Optional[int] = 2560,
+                                   fit: Optional[str] = 'inside',
+                                   output_format: Optional[str] = 'png',
+                                   without_enlargement: Optional[bool] = True,
+                                   default_image: Optional[str] = None) -> str:
+    params = {
         'url': url,
         'w': width,
         'h': height,
         'fit': fit,
         'output': output_format,
-    })
+        'we': '1' if without_enlargement else None,
+        'default': default_image,
+    }
+    filtered_params = {k: v for k, v in params.items() if v is not None}
+    query_string = urlencode(filtered_params)
     return env.IMAGES_WESERV_NL + '?' + query_string
+
+
+def construct_images_weserv_nl_url_convert_to_jpg(url: str) -> str:
+    return construct_images_weserv_nl_url(url, width=None, height=None, fit=None, without_enlargement=None,
+                                          output_format='jpg')
+
+
+async def detect_image_dimension_via_images_weserv_nl(url: str) -> tuple[int, int]:
+    url = construct_images_weserv_nl_url_convert_to_jpg(url)
+    res = await web.get_medium_info(url)
+    if not res:
+        return -1, -1
+    _, width, height, _ = res
+    return width, height
