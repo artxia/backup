@@ -1,5 +1,5 @@
 from __future__ import annotations
-from collections.abc import Iterator, Iterable
+from collections.abc import Iterator, Iterable, Awaitable
 from typing import Union, Optional
 
 import re
@@ -8,10 +8,16 @@ from bs4.element import NavigableString, PageElement, Tag
 from urllib.parse import urlparse
 from attr import define
 
-from src import web
-from .medium import Video, Image, Media, Animation, Audio
+from src import web, env
+from .medium import Video, Image, Media, Animation, Audio, UploadedImage
 from .html_node import *
 from .utils import stripNewline, stripLineEnd, isAbsoluteHttpLink, resolve_relative_link, emojify, is_emoticon
+
+convert_table_to_png: Optional[Awaitable]
+if env.TABLE_TO_IMAGE:
+    from .table_drawer import convert_table_to_png
+else:
+    convert_table_to_png = None
 
 srcsetParser = re.compile(r'(?:^|,\s*)'
                           r'(?P<url>\S+)'  # allow comma here because it is valid in URL
@@ -45,20 +51,31 @@ class Parser:
             raise RuntimeError('You must parse the HTML first')
         return stripNewline(stripLineEnd(self.html_tree.get_html().strip()))
 
-    async def _parse_item(self, soup: Union[PageElement, BeautifulSoup, Tag, NavigableString, Iterable[PageElement]]):
+    async def _parse_item(self, soup: Union[PageElement, BeautifulSoup, Tag, NavigableString, Iterable[PageElement]]) \
+            -> Optional[Text]:
         result = []
         if isinstance(soup, Iterator):  # a Tag is also Iterable, but we only expect an Iterator here
+            prev_tag_name = None
             for child in soup:
                 item = await self._parse_item(child)
                 if item:
+                    tag_name = child.name if isinstance(child, Tag) else None
+                    if (tag_name == 'div' or prev_tag_name == 'div') \
+                            and not (
+                            (result and result[-1].get_html().endswith('\n')) or item.get_html().startswith('\n')
+                    ):
+                        result.append(Br())
                     result.append(item)
+                    prev_tag_name = tag_name
+
             if not result:
                 return None
             return result[0] if len(result) == 1 else Text(result)
 
         if isinstance(soup, NavigableString):
             if type(soup) is NavigableString:
-                return Text(emojify(str(soup)))
+                text = str(soup)
+                return Text(emojify(text)) if text else None
             return None  # we do not expect a subclass of NavigableString here, drop it
 
         if not isinstance(soup, Tag):
@@ -69,15 +86,30 @@ class Parser:
             return None
 
         if tag == 'table':
-            return None  # drop table
+            rows = soup.findAll('tr')
+            if not rows:
+                return None
+            rows_content = []
+            for row in rows:
+                columns = row.findAll(('td', 'th'))
+                if len(columns) != 1:
+                    if env.TABLE_TO_IMAGE:
+                        self.media.add(UploadedImage(convert_table_to_png(str(soup))))
+                    return None
+                row_content = await self._parse_item(columns[0])
+                if row_content:
+                    if row_content.get_html().endswith('\n'):
+                        rows_content.append(row_content)
+                        continue
+                    rows_content.extend((row_content, Br()))
+            return Text(rows_content) or None
 
         if tag == 'p' or tag == 'section':
             parent = soup.parent.name
             text = await self._parse_item(soup.children)
             if text:
                 return Text([Br(), text, Br()]) if parent != 'li' else text
-            else:
-                return None
+            return None
 
         if tag == 'blockquote':
             quote = await self._parse_item(soup.children)
@@ -198,10 +230,6 @@ class Parser:
             text = await self._parse_item(soup.children)
             return Text([Br(2), Underline(text), Br()]) if text else None
 
-        if tag == 'li':
-            text = await self._parse_item(soup.children)
-            return ListItem(text) if text else None
-
         if tag == 'iframe':
             # text = await self._parse_item(soup.children)
             src = soup.get('src')
@@ -211,17 +239,24 @@ class Parser:
             title = await web.get_page_title(src)
             return Text([Br(2), Link(f'iframe ({title})', param=src), Br(2)])
 
-        in_list = tag == 'ol' or tag == 'ul'
-        for child in soup.children:
-            item = await self._parse_item(child)
-            if item and (not in_list or type(child) is not NavigableString):
-                result.append(item)
-        if tag == 'ol':
-            return OrderedList([Br(), *result, Br()])
-        elif tag == 'ul':
-            return UnorderedList([Br(), *result, Br()])
-        else:
-            return result[0] if len(result) == 1 else Text(result)
+        if tag == 'ol' or tag == 'ul':
+            texts = []
+            list_items = soup.findAll('li', recursive=False)
+            if not list_items:
+                return None
+            for list_item in list_items:
+                text = await self._parse_item(list_item)
+                if text and text.get_html().strip():
+                    texts.append(ListItem(text))
+            if not texts:
+                return None
+            if tag == 'ol':
+                return OrderedList([Br(), *texts, Br()])
+            elif tag == 'ul':
+                return UnorderedList([Br(), *texts, Br()])
+
+        text = await self._parse_item(soup.children)
+        return text or None
 
     def _get_multi_src(self, soup: Tag) -> list[str]:
         src = soup.get('src')

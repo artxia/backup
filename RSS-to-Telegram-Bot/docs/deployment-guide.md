@@ -87,13 +87,30 @@ Turn to [Kaffeine](https://kaffeine.herokuapp.com/), filling your Heroku app nam
 
 ## Option 4: Dirty run
 
-Minimal: Python 3.7+  
+Minimal: Python 3.7+ (x86 / amd64), Python 3.8+ (arm64)  
 Recommended: Python 3.9+
+
+### Prerequisites
+
+> These fonts are used for HTML table rendering. You may use WenQuanYi Zen Hei, WenQuanYI Micro Hei, Noto Sans CJK, Microsoft YaHei, or SimHei.
+
+#### Debian / Ubuntu
+
+```sh
+sudo apt install -y fonts-wqy-microhei
+```
+
+#### Other Linux distributions / Windows / macOS
+
+You know what to do. However, I cannot guarantee that the fonts can be recognized properly by matplotlib.
+
+### Execute
 
 ```sh
 git clone https://github.com/Rongronggg9/RSS-to-Telegram-Bot.git
 cd RSS-to-Telegram-Bot
 pip3 install -r requirements.txt
+cp .env.example .env
 vi .env  # fill in env variables
 python3 -u telegramRSSbot.py
 ```

@@ -31,21 +31,23 @@
     - _(Note that the option is only effective when **send mode** is **auto** or **force Telegram messages**)_
 - **Post title**:
     - **<ins>Auto</ins>**: display the post title only when it is not auto-filled _(e.g., some routes of [RSSHub](https://github.com/DIYGod/RSSHub) will autofill the title)_
-    - **Force enable**: always display post title _(the post must have a title)_
+    - **Enable**: always display post title _(the post must have a title)_
     - **Disable**: never display post title
 - **Source**:
     - **<ins>Feed title and link</ins>**: display a link to the post and the feed title. If **style** is **RSStT**, they will be displayed together as a text link at the end of the message. _(note that if the link does not exist, only the feed title will be displayed)_
     - **Feed title and link displayed as post title**: display the link and post title together as a text link at the beginning of the message, but not to omit the feed title _(note that if the link does not exist, only the post title will be displayed)_
-    - **No feed title, link at the end**: display a link to the post at the end of the message _(note that if the link does not exist, fall back to **completely disable**)_
     - **No feed title, link displayed as post title**: display the link and post title together as a text link at the beginning of the message, omitting the feed title _(note that if the link does not exist, fall back to **completely disable**)_
+    - **No feed title, hyperlink at the end**: display a text hyperlink to the post at the end of the message, just like [`source`](https://git.io/RSStT) _(note that if the link does not exist, fall back to **completely disable**)_
+    - **No feed title, bare URL at the end**: display a bare URL to the post at the end of the message, just like [`https://git.io/RSStT`](https://git.io/RSStT) _(note that if the link does not exist, fall back to **completely disable**)_
     - **Completely disable**: do not display anything about the source
 - **Author**:
     - **<ins>Auto</ins>**: display author name if it is not fully contained in the feed title
-    - **Force enable**: always display author name _(the post must have an author)_
+    - **Enable**: always display author name _(the post must have an author)_
     - **Disable**: never display author-name
 - **Link preview**:
-    - **<ins>Auto</ins>**: Enable Telegram link preview when a post is sent as a Telegraph post or only its title and source are sent as a Telegram message
-    - **Force Enable**: Always enable Telegram link preview _(note that a message containing media does not support link preview)_
+    - **<ins>Auto</ins>**: enable Telegram link preview when a post is sent as a Telegraph post or only its title and source are sent as a Telegram message
+    - **Enable**: always enable Telegram link preview _(note that a message containing media does not support link preview)_
+    - **Disable**: always disable Telegram link preview
 - **Style**:
     - **<ins>RSStT</ins>**: the default message style of RSS to Telegram Bot
     - **flowerss**: a style that looks like [flowerss](https://github.com/indes/flowerss-bot)

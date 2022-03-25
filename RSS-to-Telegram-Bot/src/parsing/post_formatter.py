@@ -30,8 +30,9 @@ FORCE_TELEGRAPH: Final = 1
 FORCE_MESSAGE: Final = 2
 FEED_TITLE_AND_LINK: Final = 0
 FEED_TITLE_AND_LINK_AS_POST_TITLE: Final = 1
-NO_FEED_TITLE_BUT_LINK: Final = -1
 NO_FEED_TITLE_BUT_LINK_AS_POST_TITLE: Final = -3
+NO_FEED_TITLE_BUT_TEXT_LINK: Final = -1
+NO_FEED_TITLE_BUT_BARE_LINK: Final = -4
 COMPLETELY_DISABLE: Final = -2
 ONLY_MEDIA_NO_CONTENT: Final = 1
 RSSTT: Final = 0
@@ -41,8 +42,9 @@ FLOWERSS: Final = 1
 NO_VIA: Final = 'no_via'
 FEED_TITLE_VIA_NO_LINK: Final = 'feed_title_via_no_link'
 FEED_TITLE_VIA_W_LINK: Final = 'feed_title_via_w_link'
-LINK_VIA: Final = 'link_via'
-TypeViaType = Union[NO_VIA, FEED_TITLE_VIA_NO_LINK, FEED_TITLE_VIA_W_LINK, LINK_VIA]
+TEXT_LINK_VIA: Final = 'text_link_via'
+BARE_LINK_VIA: Final = 'bare_link_via'
+TypeViaType = Union[NO_VIA, FEED_TITLE_VIA_NO_LINK, FEED_TITLE_VIA_W_LINK, TEXT_LINK_VIA, BARE_LINK_VIA]
 
 # message type
 NORMAL_MESSAGE: Final = 'normal_message'
@@ -142,10 +144,10 @@ class PostFormatter:
         """
         assert send_mode in {FORCE_LINK, AUTO, FORCE_TELEGRAPH, FORCE_MESSAGE}
         assert isinstance(length_limit, int) and length_limit >= 0
-        assert link_preview in {AUTO, FORCE_ENABLE}
+        assert link_preview in {DISABLE, AUTO, FORCE_ENABLE}
         assert display_author in {DISABLE, AUTO, FORCE_DISPLAY}
-        assert display_via in {NO_FEED_TITLE_BUT_LINK_AS_POST_TITLE, COMPLETELY_DISABLE, NO_FEED_TITLE_BUT_LINK,
-                               FEED_TITLE_AND_LINK, FEED_TITLE_AND_LINK_AS_POST_TITLE}
+        assert display_via in {NO_FEED_TITLE_BUT_LINK_AS_POST_TITLE, COMPLETELY_DISABLE, NO_FEED_TITLE_BUT_TEXT_LINK,
+                               NO_FEED_TITLE_BUT_BARE_LINK, FEED_TITLE_AND_LINK, FEED_TITLE_AND_LINK_AS_POST_TITLE}
         assert display_title in {DISABLE, AUTO, FORCE_DISPLAY}
         assert display_media in {DISABLE, AUTO, ONLY_MEDIA_NO_CONTENT}
         assert style in {RSSTT, FLOWERSS}
@@ -170,8 +172,10 @@ class PostFormatter:
         # ---- determine via_type ----
         if display_via == COMPLETELY_DISABLE or not (sub_title or self.link):
             via_type = NO_VIA
-        elif display_via == NO_FEED_TITLE_BUT_LINK and self.link:
-            via_type = LINK_VIA
+        elif display_via == NO_FEED_TITLE_BUT_BARE_LINK and self.link:
+            via_type = BARE_LINK_VIA
+        elif display_via == NO_FEED_TITLE_BUT_TEXT_LINK and self.link:
+            via_type = TEXT_LINK_VIA
         elif display_via == FEED_TITLE_AND_LINK_AS_POST_TITLE and sub_title:
             via_type = FEED_TITLE_VIA_NO_LINK
         elif display_via == NO_FEED_TITLE_BUT_LINK_AS_POST_TITLE:
@@ -179,7 +183,7 @@ class PostFormatter:
         elif display_via == FEED_TITLE_AND_LINK and sub_title:
             via_type = FEED_TITLE_VIA_W_LINK
         elif display_via == FEED_TITLE_AND_LINK and not sub_title and self.link:
-            via_type = LINK_VIA
+            via_type = TEXT_LINK_VIA
         else:
             via_type = NO_VIA
 
@@ -232,7 +236,11 @@ class PostFormatter:
         elif send_mode == FORCE_TELEGRAPH and self.telegraph_link is not False:
             message_type = TELEGRAPH_MESSAGE
         elif send_mode == FORCE_TELEGRAPH and self.telegraph_link is False:
-            message_type = LINK_MESSAGE if self.link else NORMAL_MESSAGE
+            if self.link:
+                message_type = LINK_MESSAGE
+                title_type = POST_TITLE_W_LINK
+            else:
+                message_type = NORMAL_MESSAGE
         else:  # AUTO
             # if display_media != DISABLE and self.media:
             #     await self.media.validate()  # check media validity
@@ -268,14 +276,19 @@ class PostFormatter:
                 if self.telegraph_link is None:  # double check
                     await self.telegraph_ify()
 
-        if self.telegraph_link is False and message_type == TELEGRAPH_MESSAGE:  # fallback to normal message if needed
-            message_type = LINK_MESSAGE if self.link else NORMAL_MESSAGE
+        if self.telegraph_link is False and message_type == TELEGRAPH_MESSAGE:  # fallback if needed
+            if self.link:
+                message_type = LINK_MESSAGE
+                if send_mode == FORCE_TELEGRAPH:
+                    title_type = POST_TITLE_W_LINK
+            else:
+                message_type = NORMAL_MESSAGE
+
+        if message_type == LINK_MESSAGE and title_type == NO_POST_TITLE and via_type == NO_VIA:  # avoid empty message
+            title_type = POST_TITLE_W_LINK
 
         if message_type == NORMAL_MESSAGE and display_media == ONLY_MEDIA_NO_CONTENT and self.media:
             message_type = LINK_MESSAGE
-
-        if message_type == LINK_MESSAGE:
-            title_type = POST_TITLE_W_LINK
 
         # ---- determine need_media ----
         need_media = (
@@ -287,7 +300,7 @@ class PostFormatter:
         )
 
         # ---- determine need_link_preview ----
-        need_link_preview = link_preview == FORCE_ENABLE or message_type != NORMAL_MESSAGE
+        need_link_preview = link_preview != DISABLE and (link_preview == FORCE_ENABLE or message_type != NORMAL_MESSAGE)
 
         option_hash = f'{sub_title}|{tags}|{title_type}|{via_type}|{need_author}|{message_type}|{message_style}'
         self.__param_to_option_cache[param_hash] = option_hash
@@ -389,7 +402,9 @@ class PostFormatter:
                 via_text = Text([Text('via '), Link(feed_title, param=self.link) if self.link else Text(feed_title)])
             elif via_type == FEED_TITLE_VIA_NO_LINK:
                 via_text = Text(f'via {feed_title}')
-            elif via_type == LINK_VIA and self.link:
+            elif via_type == BARE_LINK_VIA and self.link:
+                via_text = Text(self.link)
+            elif via_type == TEXT_LINK_VIA and self.link:
                 via_text = Link('source', param=self.link)
             else:
                 via_text = None
@@ -426,10 +441,14 @@ class PostFormatter:
             # ---- sourcing ----
             if message_type == TELEGRAPH_MESSAGE:
                 sourcing_html = Link('Telegraph', param=self.telegraph_link).get_html()
-                if not via_type == NO_VIA:
-                    sourcing_html += (' | ' + Link('source', param=self.link).get_html()) if self.link else ''
+                if via_type == BARE_LINK_VIA and self.link:
+                    sourcing_html += '\n' + self.link
+                elif via_type != NO_VIA and self.link:
+                    sourcing_html += ' | ' + Link('source', param=self.link).get_html()
             elif message_type == LINK_MESSAGE or via_type in {NO_VIA, FEED_TITLE_VIA_NO_LINK}:
                 sourcing_html = None
+            elif via_type == BARE_LINK_VIA and self.link:
+                sourcing_html = self.link
             else:  # NORMAL_MESSAGE
                 sourcing_html = Link('source', param=self.link).get_html() if self.link else None
 
@@ -485,6 +504,8 @@ class PostFormatter:
             for enclosure in self.enclosures:
                 # https://www.iana.org/assignments/media-types/media-types.xhtml
                 if not enclosure.url or self.media.url_exists(enclosure.url):
+                    continue
+                if not utils.isAbsoluteHttpLink(enclosure.url) and parsed.parser.soup.findAll('a', href=enclosure.url):
                     continue
                 elif not enclosure.type:
                     medium = File(enclosure.url)

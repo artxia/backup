@@ -33,7 +33,7 @@
 | `R_PROXY`              | Proxy used to fetch feeds [^3]                        | `socks5://172.17.0.1:1080`     |                        |
 | `PROXY_BYPASS_PRIVATE` | Pypass proxy for private IPs or not?                  | `1`                            | `0`                    |
 | `PROXY_BYPASS_DOMAINS` | Pypass proxy for listed domains                       | `example.com;example.net` [^2] |                        |
-| `USER_AGENT`           | User-Agent                                            | `Mozilla/5.0`                  | `RSStT/2.0 RSS Reader` |
+| `USER_AGENT`           | User-Agent                                            | `Mozilla/5.0`                  | `RSStT/2.2 RSS Reader` |
 | `IPV6_PRIOR`           | Enforce fetching feeds over IPv6 firstly or not? [^4] | `1`                            | `0`                    |
 
 ### Misc settings
@@ -45,6 +45,7 @@
 | `IMG_RELAY_SERVER` | Media relay server URL                                                 | `https://images.weserv.nl/?url=`              | `https://rsstt-img-relay.rongrong.workers.dev/` |
 | `IMAGES_WESERV_NL` | images.weserv.nl URL                                                   | `https://t0.nl/`                              | `https://images.weserv.nl/`                     |
 | `DATABASE_URL`     | Database URL [^5]                                                      | `postgres://user:pass@example.com:5432/table` | `sqlite://config/db.sqlite3?journal_mode=OFF`   |
+| `TABLE_TO_IMAGE`   | Convert tables to image (causing high CPU usage) or just drop them?    | `1`                                           | `0`                                             |
 | `DEBUG`            | Enable debug logging or not?                                           | `1`                                           | `0`                                             |
 
 ## Manager options

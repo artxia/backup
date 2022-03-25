@@ -20,7 +20,7 @@ from telethon.tl import types
 from random import sample
 from pathlib import Path
 
-from src import env, log, db, command, redirect_server
+from src import env, log, db, command
 from src.i18n import i18n, ALL_LANGUAGES, get_commands_list
 from src.parsing import tgraph
 
@@ -78,6 +78,7 @@ async def pre():
 
     # enable redirect server for Railway, Heroku, etc
     if env.PORT:
+        from src import redirect_server
         await redirect_server.run(port=env.PORT)
 
     # noinspection PyTypeChecker
@@ -228,7 +229,8 @@ if __name__ == '__main__':
     scheduler = AsyncIOScheduler(event_loop=loop)
     scheduler.add_job(func=command.monitor.run_monitor_task,
                       trigger=CronTrigger(minute='*', second=env.CRON_SECOND, timezone='UTC'),
-                      max_instances=10)
+                      max_instances=10,
+                      misfire_grace_time=10)
     scheduler.start()
 
     bot.run_until_disconnected()

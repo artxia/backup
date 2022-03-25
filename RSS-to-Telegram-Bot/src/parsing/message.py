@@ -57,7 +57,7 @@ class MessageDispatcher:
                                          head_count=media_msg_count or -1,
                                          length_limit_tail=4096)
         else:
-            tel = [(None, None)]
+            tel = []
 
         while tel:
             plain_text, format_entities = tel.pop(0)
@@ -125,6 +125,7 @@ class Message:
             )
         )
 
+    # noinspection PyProtectedMember
     async def send(self, reply_to: Union[int, types.Message, None] = None) \
             -> Optional[Union[types.Message, list[types.Message]]]:
         msg_lock, flood_lock = locks.user_msg_locks(self.user_id)
@@ -136,7 +137,8 @@ class Message:
                 async with msg_lock:  # acquire a msg lock
                     async with self.__overall_semaphore:  # only acquire overall semaphore when sending
                         if self.media_type == MEDIA_GROUP:
-                            # telethon does not support formatting a media group using formatting entities, sad
+                            # # telethon does not support formatting a media group using formatting entities, sad
+                            # from telethon.extensions.html import unparse as html_unparse
                             # html = html_unparse(self.plain_text, self.format_entities)
                             # return await env.bot.send_message(entity=self.user_id,
                             #                                   message=html,

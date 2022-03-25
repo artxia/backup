@@ -152,7 +152,7 @@ else:
 
 PROXY_BYPASS_PRIVATE: Final = __bool_parser(os.environ.get('PROXY_BYPASS_PRIVATE'))
 PROXY_BYPASS_DOMAINS: Final = __list_parser(os.environ.get('PROXY_BYPASS_DOMAINS'))
-USER_AGENT: Final = os.environ.get('USER_AGENT') or 'RSStT/2.1 RSS Reader'
+USER_AGENT: Final = os.environ.get('USER_AGENT') or 'RSStT/2.2 RSS Reader'
 IPV6_PRIOR: Final = __bool_parser(os.environ.get('IPV6_PRIOR'))
 
 # ----- img relay server config -----
@@ -175,8 +175,9 @@ DATABASE_URL: Final = (_database_url.replace('postgresql', 'postgres', 1) if _da
                        else _database_url)
 del _database_url
 
-# ----- debug config -----
+# ----- misc config -----
 DEBUG: Final = __bool_parser(os.environ.get('DEBUG'))
+TABLE_TO_IMAGE: Final = __bool_parser(os.environ.get('TABLE_TO_IMAGE'))
 
 # ----- environment config -----
 RAILWAY_STATIC_URL: Final = os.environ.get('RAILWAY_STATIC_URL')

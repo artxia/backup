@@ -3,6 +3,7 @@ from typing import Union
 from collections.abc import MutableMapping
 from src.compat import Final
 
+import gc
 import asyncio
 from datetime import datetime, timedelta, timezone
 from email.utils import format_datetime
@@ -60,6 +61,7 @@ class MonitoringLogs:
         cls.monitoring_counts += 1
         if cls.monitoring_counts == 10:
             cls.print_summary()
+            gc.collect()
 
     @classmethod
     def print_summary(cls):
@@ -217,7 +219,7 @@ async def __monitor(feed: db.Feed) -> str:
         new_url_feed = await inner.sub.migrate_to_new_url(feed, wf.url)
         feed = new_url_feed if isinstance(new_url_feed, db.Feed) else feed
 
-    await asyncio.gather(*(__notify_all(feed, entry) for entry in updated_entries))
+    await asyncio.gather(*(__notify_all(feed, entry) for entry in updated_entries[::-1]))
 
     return UPDATED
 
