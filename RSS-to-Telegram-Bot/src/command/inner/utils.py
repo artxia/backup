@@ -10,8 +10,8 @@ from zlib import crc32
 from telethon import Button
 from telethon.tl.types import KeyboardButtonCallback
 
-from src import db, log, env
-from src.i18n import i18n
+from ... import db, log, env
+from ...i18n import i18n
 
 logger = log.getLogger('RSStT.command')
 
@@ -74,7 +74,13 @@ def get_http_caching_headers(headers: Optional[Mapping]) -> dict[str, Optional[U
         }
 
     last_modified = headers.get('Last-Modified', headers.get('Date'))
-    last_modified = parsedate_to_datetime(last_modified) if last_modified else datetime.utcnow()
+    try:
+        last_modified = parsedate_to_datetime(last_modified) if last_modified else datetime.utcnow()
+    except ValueError:
+        try:
+            last_modified = datetime.fromisoformat(last_modified)  # why some websites are so freaky? I can't understand
+        except ValueError:
+            last_modified = datetime.utcnow()
     return {
         'Last-Modified': last_modified,
         'ETag': headers.get('ETag')

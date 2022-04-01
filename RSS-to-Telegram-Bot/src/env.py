@@ -1,15 +1,20 @@
 from __future__ import annotations
 from typing import Optional
-from src.compat import Final
+from .compat import Final
 
 import asyncio
 import os
-import logging
+import sys
+import colorlog
 import re
+import argparse
 from telethon import TelegramClient
 from telethon.tl.types import User, InputPeerUser
 from python_socks import parse_proxy_url
 from dotenv import load_dotenv
+from pathlib import Path
+
+from .version import __version__
 
 
 # ----- utils -----
@@ -36,35 +41,80 @@ def __list_parser(var: Optional[str]) -> list[str]:
     return var_t
 
 
+# ----- setup logging -----
+DEBUG: Final = __bool_parser(os.environ.get('DEBUG'))
+colorlog.basicConfig(format='%(log_color)s%(asctime)s:%(levelname)s:%(name)s - %(message)s',
+                     datefmt='%Y-%m-%d-%H:%M:%S',
+                     level=colorlog.DEBUG if DEBUG else colorlog.INFO)
+logger = colorlog.getLogger('RSStT.env')
+
+# ----- determine the environment -----
+user_home = os.path.expanduser('~')
+self_path = os.path.dirname(__file__)
+self_module_name = os.path.basename(self_path)
+cli_entry = sys.argv[0]  # expect `-m` or `/path/to/telegramRSSbot.py`
+is_self_run_as_a_whole_package = cli_entry.endswith('telegramRSSbot.py')
+
+__arg_parser = argparse.ArgumentParser(
+    prog=cli_entry if cli_entry != '-m' else f'python3 -m {self_module_name}',
+    description='RSS to Telegram Bot, a Telegram RSS bot that cares about your reading experience.')
+__arg_parser.add_argument('-c', '--config', metavar='/path/to/config/folder', type=str, nargs=1,
+                          help='path to the config folder')
+cli_args = __arg_parser.parse_args()
+custom_config_path = cli_args.config[0] if cli_args.config else None
+
+if custom_config_path:
+    config_folder_path = os.path.normpath(os.path.abspath(custom_config_path))
+elif is_self_run_as_a_whole_package:
+    config_folder_path = os.path.normpath(os.path.join(self_path, '..', 'config'))
+else:
+    config_folder_path = os.path.join(user_home, '.rsstt')
+
+Path(config_folder_path).mkdir(parents=True, exist_ok=True)
+logger.info(f'Config folder: {config_folder_path}')
+
 # ----- load .env -----
-load_dotenv(override=True)
+dot_env_paths = (os.path.join(config_folder_path, '.env'),
+                 os.path.join(os.path.abspath('.'), '.env'))
+if is_self_run_as_a_whole_package:
+    dot_env_paths = (os.path.normpath(os.path.join(self_path, '..', '.env')),) + dot_env_paths
+for dot_env_path in sorted(set(dot_env_paths), key=dot_env_paths.index):
+    if os.path.isfile(dot_env_path):
+        load_dotenv(dot_env_path, override=True)
+        logger.info(f'Found .env file at "{dot_env_path}", loaded')
 
 # ----- get version -----
-# noinspection PyBroadException
-try:
-    with open('.version', 'r') as v:
-        _version = v.read().strip()
-except Exception:
-    _version = 'dirty'
-
-if _version == 'dirty':
-    from subprocess import Popen, PIPE, DEVNULL
-
+if is_self_run_as_a_whole_package:
     # noinspection PyBroadException
     try:
-        with Popen('git describe --tags', shell=True, stdout=PIPE, stderr=DEVNULL, bufsize=-1) as __:
-            __.wait(3)
-            _version = __.stdout.read().decode().strip()
-        with Popen('git branch --show-current', shell=True, stdout=PIPE, stderr=DEVNULL, bufsize=-1) as __:
-            __.wait(3)
-            __ = __.stdout.read().decode().strip()
-            if __:
-                _version += f'@{__}'
+        with open(os.path.normpath(os.path.join(self_path, '..', '.version')), 'r') as v:
+            _version = v.read().strip()
     except Exception:
         _version = 'dirty'
 
-if not _version or _version == '@':
+    if _version == 'dirty':
+        from subprocess import Popen, PIPE, DEVNULL
+
+        # noinspection PyBroadException
+        try:
+            with Popen(['git', 'describe', '--tags'], shell=False, stdout=PIPE, stderr=DEVNULL, bufsize=-1) as __:
+                __.wait(3)
+                _version = __.stdout.read().decode().strip()
+            with Popen(['git', 'branch', '--show-current'], shell=False, stdout=PIPE, stderr=DEVNULL, bufsize=-1) as __:
+                __.wait(3)
+                __ = __.stdout.read().decode().strip()
+                if __:
+                    _version += f'@{__}'
+        except Exception:
+            _version = 'dirty'
+
+    if not _version or _version == '@':
+        _version = 'dirty'
+else:
     _version = 'dirty'
+
+if not re.match(r'v?\d+\.\d+(\.\d+)?', _version):
+    _version = 'v' + (__version__ + '-' + _version if not _version == 'dirty' else __version__)
 
 VERSION: Final = _version
 del _version
@@ -100,10 +150,10 @@ try:
     del _manager
 
     if not all((TOKEN, MANAGER)):
-        logging.critical('"TOKEN" OR "MANAGER" NOT SET! PLEASE CHECK YOUR SETTINGS!')
+        logger.critical('"TOKEN" OR "MANAGER" NOT SET! PLEASE CHECK YOUR SETTINGS!')
         exit(1)
 except Exception as e:
-    logging.critical('INVALID "MANAGER"! PLEASE CHECK YOUR SETTINGS!', exc_info=e)
+    logger.critical('INVALID "MANAGER"! PLEASE CHECK YOUR SETTINGS!', exc_info=e)
     exit(1)
 
 TELEGRAPH_TOKEN: Final = __list_parser(os.environ.get('TELEGRAPH_TOKEN'))
@@ -152,7 +202,7 @@ else:
 
 PROXY_BYPASS_PRIVATE: Final = __bool_parser(os.environ.get('PROXY_BYPASS_PRIVATE'))
 PROXY_BYPASS_DOMAINS: Final = __list_parser(os.environ.get('PROXY_BYPASS_DOMAINS'))
-USER_AGENT: Final = os.environ.get('USER_AGENT') or 'RSStT/2.2 RSS Reader'
+USER_AGENT: Final = os.environ.get('USER_AGENT') or f'RSStT/{__version__} RSS Reader'
 IPV6_PRIOR: Final = __bool_parser(os.environ.get('IPV6_PRIOR'))
 
 # ----- img relay server config -----
@@ -170,13 +220,12 @@ IMAGES_WESERV_NL: Final = ('https://' if not _images_weserv_nl.startswith('http'
 del _images_weserv_nl
 
 # ----- db config -----
-_database_url = os.environ.get('DATABASE_URL') or 'sqlite://config/db.sqlite3?journal_mode=OFF'
+_database_url = os.environ.get('DATABASE_URL') or f'sqlite://{config_folder_path}/db.sqlite3?journal_mode=OFF'
 DATABASE_URL: Final = (_database_url.replace('postgresql', 'postgres', 1) if _database_url.startswith('postgresql')
                        else _database_url)
 del _database_url
 
 # ----- misc config -----
-DEBUG: Final = __bool_parser(os.environ.get('DEBUG'))
 TABLE_TO_IMAGE: Final = __bool_parser(os.environ.get('TABLE_TO_IMAGE'))
 
 # ----- environment config -----
@@ -185,30 +234,30 @@ PORT: Final = int(os.environ.get('PORT', 0)) or (8080 if RAILWAY_STATIC_URL else
 
 # !!!!! DEPRECATED WARNING !!!!!
 if os.environ.get('DELAY'):
-    logging.warning('Env var "DELAY" is DEPRECATED and of no use!\n'
-                    'To avoid this warning, remove this env var.')
+    logger.warning('Env var "DELAY" is DEPRECATED and of no use!\n'
+                   'To avoid this warning, remove this env var.')
 
 if os.environ.get('CHATID'):
-    logging.warning('Env var "CHATID" is DEPRECATED!\n'
-                    'To avoid this warning, remove this env var.')
+    logger.warning('Env var "CHATID" is DEPRECATED!\n'
+                   'To avoid this warning, remove this env var.')
 
 if any((os.environ.get('REDISHOST'), os.environ.get('REDISUSER'), os.environ.get('REDISPASSWORD'),
         os.environ.get('REDISPORT'), os.environ.get('REDIS_NUM'),)):
-    logging.warning('Redis DB is DEPRECATED!\n'
-                    'ALL SUBS IN THE OLD DB WILL NOT BE MIGRATED. '
-                    'IF YOU NEED TO BACKUP YOUR SUBS, DOWNGRADE AND USE "/export" COMMAND TO BACKUP.\n\n'
-                    'Please remove these env vars (if exist):\n'
-                    'REDISHOST\n'
-                    'REDISUSER\n'
-                    'REDISPASSWORD\n'
-                    'REDISPORT\n'
-                    'REDIS_NUM')
+    logger.warning('Redis DB is DEPRECATED!\n'
+                   'ALL SUBS IN THE OLD DB WILL NOT BE MIGRATED. '
+                   'IF YOU NEED TO BACKUP YOUR SUBS, DOWNGRADE AND USE "/export" COMMAND TO BACKUP.\n\n'
+                   'Please remove these env vars (if exist):\n'
+                   'REDISHOST\n'
+                   'REDISUSER\n'
+                   'REDISPASSWORD\n'
+                   'REDISPORT\n'
+                   'REDIS_NUM')
 
-if os.path.exists('config/rss.db'):
-    os.rename('config/rss.db', 'config/rss.db.bak')
-    logging.warning('Sqlite DB "rss.db" with old schema is DEPRECATED and renamed to "rss.db.bak" automatically!\n'
-                    'ALL SUBS IN THE OLD DB WILL NOT BE MIGRATED. '
-                    'IF YOU NEED TO BACKUP YOUR SUBS, DOWNGRADE AND USE "/export" COMMAND TO BACKUP.')
+if is_self_run_as_a_whole_package and os.path.exists(os.path.join(config_folder_path, 'rss.db')):
+    os.rename(os.path.join(config_folder_path, 'rss.db'), os.path.join(config_folder_path, 'rss.db.bak'))
+    logger.warning('Sqlite DB "rss.db" with old schema is DEPRECATED and renamed to "rss.db.bak" automatically!\n'
+                   'ALL SUBS IN THE OLD DB WILL NOT BE MIGRATED. '
+                   'IF YOU NEED TO BACKUP YOUR SUBS, DOWNGRADE AND USE "/export" COMMAND TO BACKUP.')
 
 # ----- shared var -----
 bot: Optional[TelegramClient] = None  # placeholder

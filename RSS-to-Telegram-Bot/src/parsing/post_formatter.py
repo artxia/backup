@@ -1,5 +1,5 @@
 from __future__ import annotations
-from src.compat import Final
+from ..compat import Final
 from typing import Union, Optional
 
 import asyncio
@@ -423,7 +423,7 @@ class PostFormatter:
             )
 
             return header, footer
-        elif message_style == FLOWERSS_STYLE:
+        if message_style == FLOWERSS_STYLE:
             # ---- feed title ----
             if via_type in {FEED_TITLE_VIA_W_LINK, FEED_TITLE_VIA_NO_LINK}:
                 feed_title_html = Bold(feed_title).get_html() if feed_title else None
@@ -445,7 +445,7 @@ class PostFormatter:
                     sourcing_html += '\n' + self.link
                 elif via_type != NO_VIA and self.link:
                     sourcing_html += ' | ' + Link('source', param=self.link).get_html()
-            elif message_type == LINK_MESSAGE or via_type in {NO_VIA, FEED_TITLE_VIA_NO_LINK}:
+            elif via_type in {NO_VIA, FEED_TITLE_VIA_NO_LINK}:
                 sourcing_html = None
             elif via_type == BARE_LINK_VIA and self.link:
                 sourcing_html = self.link
@@ -467,6 +467,7 @@ class PostFormatter:
             )
 
             return header, footer
+        raise ValueError(f'Unknown message style: {message_style}')
 
     def generate_formatted_post(self,
                                 sub_title: Optional[str],
