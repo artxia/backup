@@ -26,7 +26,7 @@ try:
     cssutils.log.setLevel(logging.CRITICAL)  # removes warning logs from cssutils
 except ModuleNotFoundError as error:
     log.critical(f"ModuleNotFoundError: {error}. have your installed the requirements?")
-    sys.exit()
+    sys.exit(1)
 
 from .conditions import notion_page_loaded, toggle_block_has_opened
 
@@ -42,7 +42,7 @@ class Parser:
                 " make sure it contains a 'page' key with the url of the notion.site"
                 " page to parse"
             )
-            return
+            raise Exception()
 
         # get the site name from the config, or make it up by cleaning the target page's slug
         site_name = self.config.get("name", self.get_page_slug(index_url, extension=False))
@@ -187,7 +187,8 @@ class Parser:
                             file_extension = re.split(
                                 "%3f", file_extension, flags=re.IGNORECASE
                             )[0]
-                        destination = destination.with_suffix(file_extension)
+                        if file_extension:
+                            destination = destination.with_suffix(file_extension)
 
                     Path(destination).parent.mkdir(parents=True, exist_ok=True)
                     with open(destination, "wb") as f:
@@ -222,7 +223,7 @@ class Parser:
                     " https://chromedriver.chromium.org/downloads and use the"
                     " --chromedriver argument to point to the chromedriver executable"
                 )
-                sys.exit()
+                raise exception
 
         log.info(f"Initialising chromedriver at {chromedriver_path}")
         logs_path = Path.cwd() / ".logs" / "webdrive.log"
@@ -231,7 +232,7 @@ class Parser:
         chrome_options = Options()
         if not self.args.get("non_headless", False):
             chrome_options.add_argument("--headless")
-            chrome_options.add_argument("window-size=1920,1080")
+            chrome_options.add_argument("window-size=1920,20000")
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--log-level=3")
@@ -259,20 +260,18 @@ class Parser:
 
         try:
             self.load_correct_theme(url)
-        except TimeoutException:
+        except TimeoutException as ex:
             log.critical(
                 "Timeout waiting for page content to load, or no content found."
                 " Are you sure the page is set to public?"
             )
-            return
-
-        self.scroll_to_the_bottom()
+            raise ex
 
         # open the toggle blocks in the page
         self.open_toggle_blocks(self.args["timeout"])
 
         # creates soup from the page to start parsing
-        soup = BeautifulSoup(self.driver.page_source, "html.parser")
+        soup = BeautifulSoup(self.driver.page_source, "html5lib")
 
         self.clean_up(soup)
         self.set_custom_meta_tags(url, soup)
@@ -313,28 +312,6 @@ class Parser:
             self.driver.execute_script(
                 "__console.environment.ThemeStore.setState({ mode: 'dark' });"
             )
-
-    def scroll_to_the_bottom(self):
-        # scroll at the bottom of the notion-scroller element to load all elements
-        # continue once there are no changes in height after a timeout
-        # don't do this if the page has a calendar databse on it or it will load forever
-        calendar = self.driver.find_elements_by_class_name("notion-calendar-view")
-        if not calendar:
-            scroller = self.driver.find_element_by_css_selector(
-                ".notion-frame > .notion-scroller"
-            )
-            last_height = scroller.get_attribute("scrollHeight")
-            log.debug(f"Scrolling to bottom of notion-scroller (height: {last_height})")
-            while True:
-                self.driver.execute_script(
-                    "arguments[0].scrollTo(0, arguments[0].scrollHeight)", scroller
-                )
-                time.sleep(self.args["timeout"])
-                new_height = scroller.get_attribute("scrollHeight")
-                log.debug(f"New notion-scroller height after timeout is: {new_height}")
-                if new_height == last_height:
-                    break
-                last_height = new_height
 
     def open_toggle_blocks(self, timeout: int, exclude=[]):
         """Expand all the toggle block in the page to make their content visible
@@ -625,17 +602,28 @@ class Parser:
             for element in elements:
                 injected_tag = soup.new_tag(tag)
                 for attr, value in element.items():
+
+                    # `inner_html` refers to the tag's inner content
+                    # and will be added later
+                    if attr == "inner_html":
+                        continue
+
                     injected_tag[attr] = value
                     # if the value refers to a file, copy it to the dist folder
                     if attr.lower() in ["href", "src"]:
                         log.debug(f"Copying injected file '{value}'")
-                        cached_custom_file = self.cache_file(
-                            (Path.cwd() / value.strip("/"))
-                        )
-                        # destination = (self.dist_folder / source.name)
-                        # shutil.copyfile(source, destination)
+                        if urllib.parse.urlparse(value).scheme:
+                            path_to_file = value
+                        else:
+                            path_to_file = Path.cwd() / value.strip("/")
+                        cached_custom_file = self.cache_file(path_to_file)
                         injected_tag[attr] = str(cached_custom_file)  # source.name
                 log.debug(f"Injecting <{section}> tag: {injected_tag}")
+
+                # adding `inner_html` as the tag's content
+                if "inner_html" in element:
+                    injected_tag.string = element["inner_html"]
+
                 soup.find(section).append(injected_tag)
 
     def inject_loconotion_script_and_css(self, soup):
@@ -683,10 +671,11 @@ class Parser:
                             )
                             continue
                     else:
+                        extension_in_links = self.config.get("extension_in_links", True)
                         a["href"] = (
-                            self.get_page_slug(sub_page_href)
+                            self.get_page_slug(sub_page_href, extension=extension_in_links)
                             if sub_page_href != self.index_url
-                            else "index.html"
+                            else ("index.html" if extension_in_links else "")
                         )
                     subpages.append(sub_page_href)
                     log.debug(f"Found link to page {a['href']}")
