@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Union
+from typing_extensions import Final
 from collections.abc import MutableMapping
-from ..compat import Final
 
 import gc
 import asyncio
@@ -14,7 +14,7 @@ from . import inner
 from .utils import escape_html
 from .inner.utils import get_hash, update_interval, deactivate_feed
 from .. import log, db, env, web
-from ..exceptions import EntityNotFoundError, UserBlockedErrors
+from ..errors_collection import EntityNotFoundError, UserBlockedErrors
 from ..i18n import i18n
 from ..parsing.post import get_post_from_entry, Post
 from ..parsing.utils import html_space_stripper

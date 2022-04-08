@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Optional
-from .compat import Final
+from typing_extensions import Final
 
 import asyncio
 import os
@@ -13,6 +13,7 @@ from telethon.tl.types import User, InputPeerUser
 from python_socks import parse_proxy_url
 from dotenv import load_dotenv
 from pathlib import Path
+from distutils.version import StrictVersion
 
 from .version import __version__
 
@@ -42,10 +43,9 @@ def __list_parser(var: Optional[str]) -> list[str]:
 
 
 # ----- setup logging -----
-DEBUG: Final = __bool_parser(os.environ.get('DEBUG'))
 colorlog.basicConfig(format='%(log_color)s%(asctime)s:%(levelname)s:%(name)s - %(message)s',
                      datefmt='%Y-%m-%d-%H:%M:%S',
-                     level=colorlog.DEBUG if DEBUG else colorlog.INFO)
+                     level=colorlog.INFO)
 logger = colorlog.getLogger('RSStT.env')
 
 # ----- determine the environment -----
@@ -113,11 +113,20 @@ if is_self_run_as_a_whole_package:
 else:
     _version = 'dirty'
 
-if not re.match(r'v?\d+\.\d+(\.\d+)?', _version):
-    _version = 'v' + (__version__ + '-' + _version if not _version == 'dirty' else __version__)
+_version_match = re.match(r'^v?\d+\.\d+(\.\w+(\.\w+)?)?', _version)
+if _version_match:
+    try:
+        if StrictVersion(_version_match.group(0).lstrip('v')) < StrictVersion(__version__):
+            _version = _version[_version_match.end():]
+            _version = re.sub(r'(?<!\d{4})-\d+-(?!\d{2})', '', _version, count=1)
+            _version = 'v' + __version__ + '-' + _version
+    except ValueError:
+        _version = 'v' + __version__
+else:
+    _version = 'v' + __version__ + ('-' + _version if not _version == 'dirty' else '')
 
 VERSION: Final = _version
-del _version
+del _version, _version_match
 
 # ----- basic config -----
 SAMPLE_APIS: Final = {
@@ -227,6 +236,11 @@ del _database_url
 
 # ----- misc config -----
 TABLE_TO_IMAGE: Final = __bool_parser(os.environ.get('TABLE_TO_IMAGE'))
+DEBUG: Final = __bool_parser(os.environ.get('DEBUG'))
+colorlog.basicConfig(format='%(log_color)s%(asctime)s:%(levelname)s:%(name)s - %(message)s',
+                     datefmt='%Y-%m-%d-%H:%M:%S',
+                     level=colorlog.INFO if not DEBUG else colorlog.DEBUG,
+                     force=True)
 
 # ----- environment config -----
 RAILWAY_STATIC_URL: Final = os.environ.get('RAILWAY_STATIC_URL')
