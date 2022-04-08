@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## [0.3.1] - 2022.4.6
+
+### Changed
+- Ignore irrevalent requests when frontend bot in group
+- Add '/search' for searching in a group
+
+### Fixed
+- Privacy whitelist considers only chat id, not peer id
+- Wrong config path in docker-compose example
+- Respond to own message in group
+- Downloading messages in reversed order, causing remaining_msg count incorrect
+
 ## [0.3.0] - 2022.2.12
 
 ### Added
