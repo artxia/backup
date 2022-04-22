@@ -58,7 +58,6 @@ const support = async (ctx, botHelper) => {
 
 const startOrHelp = (ctx, botHelper) => {
   if (!ctx.message) {
-    // return botHelper.sendAdmin(JSON.stringify(ctx.update));
     const {
       chat: {id: chatId},
     } = ctx.message;
@@ -138,14 +137,14 @@ const format = (bot, botHelper, skipCountBool) => {
       };
       return msg.answerInlineQuery([res]).catch(() => {});
     }
-    const ivObj = await db.getIV(links[0]);
+    const ivObj = await db.getIV(links[0]).catch(() => false);
     if (ivObj && ivObj.iv) {
       return botHelper.sendInline({
         messageId: id,
         ivLink: ivObj.iv,
       }).catch(e => logger(e));
     }
-    const exist = await db.getInine(links[0]);
+    const exist = await db.getInine(links[0]).catch(() => false);
     const res = {
       type: 'article',
       id,
@@ -184,7 +183,7 @@ const format = (bot, botHelper, skipCountBool) => {
       let error = '';
       try {
         await bot.telegram.sendMessage(userId, messages.resolved(),
-          extra).catch(() => {});
+          extra);
       } catch (e) {
         error = JSON.stringify(e);
       }
@@ -199,7 +198,7 @@ const format = (bot, botHelper, skipCountBool) => {
       } = callback_query;
       const RESULT = `${text}\nResolved! ${error}`;
       await bot.telegram.editMessageText(from.id, message_id, null,
-        RESULT).catch(console.log);
+        RESULT).catch(() => {});
     }
   });
 
@@ -310,12 +309,12 @@ const format = (bot, botHelper, skipCountBool) => {
           }
           await rabbitmq.addToQueue(rabbitMes);
         } catch (e) {
-          botHelper.sendError(e).catch(() => {});
+          botHelper.sendError(e);
         }
       }
     } catch (e) {
       // console.log(e);
-      botHelper.sendError(e).catch(() => {});
+      botHelper.sendError(e);
     }
   };
   bot.on('channel_post', ctx => addToQueue(ctx));
@@ -340,7 +339,7 @@ const format = (bot, botHelper, skipCountBool) => {
       merc,
     } = task;
     if (merc) {
-      await db.setMerc(merc);
+      await db.setMerc(merc).catch(() => {});
       return;
     }
     let { link } = task;
@@ -352,6 +351,8 @@ const format = (bot, botHelper, skipCountBool) => {
     const resolveMsgId = false;
     let ivLink = '';
     let skipTimer = 0;
+    let timeoutRes;
+
     try {
       let RESULT;
       let TITLE = '';
@@ -368,14 +369,14 @@ const format = (bot, botHelper, skipCountBool) => {
         }
         rabbitmq.time(q, true);
         link = ivMaker.parse(link);
-        const {isText, url: baseUrl} = await ivMaker.isText(link, force);
+        const {isText, url: baseUrl} = await ivMaker.isText(link, force).catch(() => {isText: false});
         if (baseUrl !== link) link = baseUrl;
         if (!isText) {
           isFile = true;
         } else {
+          const isAdm = botHelper.isAdmin(chatId);
+          const IV_LIMIT = isAdm ? 120 : IV_MAKING_TIMEOUT;
           const {hostname} = url.parse(link);
-          logger(hostname);
-          logger(link);
           checkData(hostname.match('djvu'));
           clearInterval(skipTimer);
           if (process.env.SKIP_ITEMS === '1') {
@@ -393,12 +394,8 @@ const format = (bot, botHelper, skipCountBool) => {
           params = {...params, ...botParams};
           params.browserWs = browserWs;
           params.db = botHelper.db !== false;
-          // logger(params);
           await timeout(0.2);
           const ivTask = ivMaker.makeIvLink(link, params);
-		  const isAdm = botHelper.isAdmin(chatId);
-          let ivmt = isAdm ? 120 : IV_MAKING_TIMEOUT;
-
           const ivTimer = new Promise(resolve => {
             skipTimer = setInterval(() => {
               if (skipCount) {
@@ -406,7 +403,7 @@ const format = (bot, botHelper, skipCountBool) => {
                 resolve('timedOut');
               }
             }, 1000);
-            setTimeout(resolve, ivmt * 1000, 'timedOut');
+            timeoutRes = setTimeout(resolve, IV_LIMIT * 1000, 'timedOut');
           });
           await Promise.race([ivTimer, ivTask]).then(value => {
             if (value === 'timedOut') {
@@ -419,6 +416,7 @@ const format = (bot, botHelper, skipCountBool) => {
             }
           });
           clearInterval(skipTimer);
+          clearTimeout(timeoutRes);
         }
         if (isFile) {
           RESULT = messages.isLooksLikeFile(link);
@@ -484,7 +482,7 @@ const format = (bot, botHelper, skipCountBool) => {
           q ? ` from ${q}` : ''
         }\n${t}`;
         if (group) {
-          botHelper.sendAdminMark(text, group).catch(() => {});
+          botHelper.sendAdminMark(text, group);
         }
       }
     } catch (e) {
@@ -493,14 +491,15 @@ const format = (bot, botHelper, skipCountBool) => {
         e,
       )} ${e.toString()} ${chatId} ${messageId}`;
     }
-    logger(error);
+    clearTimeout(timeoutRes);
     if (error) {
+      logger('error = ', error);
       if (isBroken && resolveMsgId) {
         botHelper.sendAdminOpts(error,
-          keyboards.resolvedBtn(resolveMsgId, chatId)).catch(() => {});
+          keyboards.resolvedBtn(resolveMsgId, chatId));
       } else {
         if (groupBugs) {
-          botHelper.sendAdmin(error, groupBugs).catch(() => {});
+          botHelper.sendAdmin(error, groupBugs);
         }
       }
     }
