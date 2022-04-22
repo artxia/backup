@@ -35,8 +35,7 @@ def parse_command(command: str, max_split: int = 0, strip_target_chat: bool = Tr
         if len(temp) >= 2 and temp[1].startswith(('@', '-100')):
             del temp[1]
         command = ' '.join(temp)
-    ret = splitByWhitespace(command, maxsplit=max_split)
-    return ret
+    return splitByWhitespace(command, maxsplit=max_split)
 
 
 async def parse_command_get_sub_or_user_and_param(command: str,
@@ -137,7 +136,7 @@ async def respond_or_answer(event: Union[events.NewMessage.Event, Message,
             await event.answer(switch_pm=msg, switch_pm_param=str(event.id), private=True)
             return  # return if answering successfully
 
-        async with locks.user_flood_lock(event.chat_id):
+        async with locks.ContextWithTimeout(locks.user_flood_lock(event.chat_id), timeout=30):
             pass  # wait for flood wait
 
         await event.respond(
@@ -297,12 +296,15 @@ def command_gatekeeper(func: Optional[Callable] = None,
                 pending_callbacks.add(callback_msg_id)
             try:
                 logger.log(log_level, f'Allow {describe_user()} to use {command}')
-                async with flood_lock:
+                async with locks.ContextWithTimeout(flood_lock, timeout=timeout):
                     pass  # wait for flood wait
                 await asyncio.wait_for(
                     func(event, *args, lang=lang, chat_id=chat_id, **kwargs),  # execute the command!
                     timeout=timeout
                 )
+            except locks.ContextTimeoutError:
+                logger.error(f'Cancel {command} for {describe_user()} due to flood wait timeout ({timeout}s)')
+                # await respond_or_answer(event, 'ERROR: ' + i18n[lang]['flood_wait_prompt'])
             except asyncio.TimeoutError as _e:
                 logger.error(f'Cancel {command} for {describe_user()} due to timeout ({timeout}s)', exc_info=_e)
                 await respond_or_answer(event, 'ERROR: ' + i18n[lang]['operation_timeout_error'])
@@ -508,12 +510,10 @@ def command_gatekeeper(func: Optional[Callable] = None,
                 exc_info=e
             )
             try:
-                if isinstance(e, FloodError):
+                if isinstance(e, (FloodError, locks.ContextTimeoutError)):
                     # blocking other commands to be executed and messages to be sent
                     if hasattr(e, 'seconds') and e.seconds is not None:
-                        await locks.user_flood_wait(chat_id, e.seconds)  # acquire a flood wait
-                    async with locks.user_flood_lock(chat_id):
-                        pass  # wait for flood wait (if another request has acquired a flood wait)
+                        await locks.user_flood_wait_background(chat_id, e.seconds)  # acquire a flood wait
                     await respond_or_answer(event, 'ERROR: ' + i18n[lang]['flood_wait_prompt'])
                     await env.bot(e.request)  # resend
                 # usually occurred because the user hits the same button during auto flood wait
@@ -531,7 +531,7 @@ def command_gatekeeper(func: Optional[Callable] = None,
                         await asyncio.gather(*tasks)
                 else:
                     await respond_or_answer(event, 'ERROR: ' + i18n[lang]['uncaught_internal_error'])
-            except (FloodError, MessageNotModifiedError):
+            except (FloodError, MessageNotModifiedError, locks.ContextTimeoutError):
                 pass  # we can do nothing but be a pessimism to drop it
             except Exception as e:
                 logger.error('Uncaught error occurred when dealing with an uncaught error', exc_info=e)
@@ -558,11 +558,9 @@ class NewFileMessage(events.NewMessage):
         if not document:
             return
         if self.filename_pattern:
-            filename = None
-            for attr in document.attributes:
-                if isinstance(attr, types.DocumentAttributeFilename):
-                    filename = attr.file_name
-                    break
+            filename = next(
+                (attr.file_name for attr in document.attributes if isinstance(attr, types.DocumentAttributeFilename)),
+                None)
             if not self.filename_pattern(filename or ''):
                 return
         return super().filter(event)

@@ -33,18 +33,19 @@ class _I18N:
         return cls.__instance
 
     def __init__(self):
-        if not self.__initialized:
-            self.__l10n_d: CIMultiDict[_L10N] = CIMultiDict()
-            self.__iso_639_d: CIMultiDict[str] = CIMultiDict()
-            for lang in ALL_LANGUAGES:
-                l10n = _L10N(lang)
-                iso_639_code = l10n['iso_639_code']
-                self.__l10n_d[lang] = l10n
-                if iso_639_code:
-                    self.__iso_639_d[iso_639_code] = lang
+        if self.__initialized:
+            return
+        self.__l10n_d: CIMultiDict[_L10N] = CIMultiDict()
+        self.__iso_639_d: CIMultiDict[str] = CIMultiDict()
+        for lang in ALL_LANGUAGES:
+            l10n = _L10N(lang)
+            iso_639_code = l10n['iso_639_code']
+            self.__l10n_d[lang] = l10n
+            if iso_639_code:
+                self.__iso_639_d[iso_639_code] = lang
 
-            self.__initialized = True
-            self.set_help_msg_html()
+        self.__initialized = True
+        self.set_help_msg_html()
 
     def __getitem__(self, lang_code: Optional[str]) -> "_L10N":
         if not lang_code or not isinstance(lang_code, str):
@@ -53,12 +54,14 @@ class _I18N:
 
     def get_all_l10n_string(self, key: str, html_escaped: bool = False,
                             only_iso_639: bool = False) -> tuple[str, ...]:
-        languages = ALL_LANGUAGES if not only_iso_639 else self.__iso_639_d.keys()
-        res = (
-            tuple(self[lang_code][key] for lang_code in languages if self[lang_code].key_exist(key))
-            if not html_escaped else
-            tuple(self[lang_code].html_escaped(key) for lang_code in languages if self[lang_code].key_exist(key))
+        languages = self.__iso_639_d.keys() if only_iso_639 else ALL_LANGUAGES
+        all_l10n = tuple(self[lang_code] for lang_code in languages)
+        res = tuple(
+            l10n.html_escaped(key) if html_escaped else l10n[key]
+            for l10n in all_l10n
+            if l10n.key_exist(key)
         )
+
         return res or (key,)
 
     def get_fallback_l10n(self, lang_code: Optional[str] = None) -> "_L10N":
@@ -100,7 +103,7 @@ class _L10N:
     def __init__(self, lang_code: str):
         self.__lang_code: str = lang_code
         self.__l10n_lang: CIMultiDict[str]
-        with open(path.join(I18N_PATH, lang_code + '.json'), encoding='utf-8') as f:
+        with open(path.join(I18N_PATH, f'{lang_code}.json'), encoding='utf-8') as f:
             l10n_d = load(f)
         l10n_d_flatten = {}
         assert isinstance(l10n_d, dict)
@@ -123,9 +126,9 @@ class _L10N:
         if self.key_exist(key):
             return self.__l10n_lang[key]
         if self.__lang_code != FALLBACK_LANGUAGE:
-            return _I18N().get_fallback_l10n(
-                self.__lang_code if not self.__l10n_lang['iso_639_code'] else None  # get ISO 639 fallback if needed
-            )[key]
+            # get ISO 639 fallback if needed
+            return _I18N().get_fallback_l10n(None if self.__l10n_lang['iso_639_code'] else self.__lang_code)[key]
+
         return key
 
     def html_escaped(self, key: str):
