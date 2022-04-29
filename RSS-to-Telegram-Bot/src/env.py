@@ -117,11 +117,11 @@ if _version_match:
         if StrictVersion(_version_match[0].lstrip('v')) < StrictVersion(__version__):
             _version = _version[_version_match.end():]
             _version = re.sub(r'(?<!\d{4})-\d+-(?!\d{2})', '', _version, count=1)
-            _version = f'v{__version__}-{_version}'
+            _version = f'v{__version__}-{_version}' if _version else f'v{__version__}'
     except ValueError:
         _version = f'v{__version__}'
 else:
-    _version = f'v{__version__}' + (f'-{_version}' if _version != 'dirty' else '')
+    _version = f'v{__version__}' + (f'-{_version}' if _version and _version != 'dirty' else '')
 
 VERSION: Final = _version
 del _version, _version_match
@@ -233,6 +233,8 @@ del _database_url
 
 # ----- misc config -----
 TABLE_TO_IMAGE: Final = __bool_parser(os.environ.get('TABLE_TO_IMAGE'))
+TRAFFIC_SAVING: Final = __bool_parser(os.environ.get('TRAFFIC_SAVING'))
+LAZY_MEDIA_VALIDATION: Final = __bool_parser(os.environ.get('LAZY_MEDIA_VALIDATION'))
 DEBUG: Final = __bool_parser(os.environ.get('DEBUG'))
 colorlog.basicConfig(
     format='%(log_color)s%(asctime)s:%(levelname)s:%(name)s - %(message)s',
@@ -240,6 +242,8 @@ colorlog.basicConfig(
     level=colorlog.DEBUG if DEBUG else colorlog.INFO,
     force=True,
 )
+if DEBUG:
+    logger.debug('DEBUG mode enabled')
 
 # ----- environment config -----
 RAILWAY_STATIC_URL: Final = os.environ.get('RAILWAY_STATIC_URL')

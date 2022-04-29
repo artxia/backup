@@ -33,7 +33,7 @@ from .i18n import i18n
 SOI: Final = b'\xff\xd8'
 EOI: Final = b'\xff\xd9'
 
-IMAGE_MAX_FETCH_SIZE: Final = 1024 * 5
+IMAGE_MAX_FETCH_SIZE: Final = 1024 * (1 if env.TRAFFIC_SAVING else 5)
 IMAGE_ITER_CHUNK_SIZE: Final = 128
 IMAGE_READ_BUFFER_SIZE: Final = 1
 
@@ -74,7 +74,7 @@ logger = log.getLogger('RSStT.web')
 
 _feedparser_thread_pool = ThreadPoolExecutor(1, 'feedparser_')
 
-contentDispositionFilenameParser = partial(re.compile(r'(?<=filename=").+?(?=")').search, flags=re.I)
+contentDispositionFilenameParser = partial(re.compile(r'(?<=filename=")[^"]+(?=")').search, flags=re.I)
 
 
 class WebError(Exception):
@@ -340,10 +340,10 @@ async def __medium_info_callback(response: aiohttp.ClientResponse) -> tuple[int,
     preloaded_length = content.total_bytes  # part of response body already came with the response headers
     if not (  # hey, here is a `not`!
             # a non-webp-or-svg image
-            (content_type.startswith('image') and content_type.find('webp') == -1 and content_type.find('svg') == -1)
+            (content_type.startswith('image') and all(keyword not in content_type for keyword in ('webp', 'svg')))
             or (
                     # an un-truncated webp image
-                    (content_type.find('webp') != -1 or content_type == 'application/octet-stream')
+                    any(keyword in content_type for keyword in ('webp', 'application'))
                     # PIL cannot handle a truncated webp image
                     and content_length <= max(preloaded_length, IMAGE_MAX_FETCH_SIZE)
             )
