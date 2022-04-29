@@ -7,6 +7,8 @@ const ON = 'On';
 const PARSE_MODE_MARK = 'Markdown';
 
 const INLINE_TITLE = 'InstantView created. Click me to send';
+const BANNED_ERROR = 'USER_BANNED_IN_CHANNEL';
+const RIGHTS_ERROR = 'need administrator rights in the channel chat';
 
 class BotHelper {
   constructor(bot) {
@@ -177,9 +179,12 @@ class BotHelper {
 
   sendError(error, text = '') {
     let e = error;
-    if (typeof e === 'object') {
+    if (typeof e === 'object' && !global.isDevEnabled) {
       if (e.response && typeof e.response === 'object') {
         e = e.response.description || 'unknown error';
+        if (e.match(BANNED_ERROR) || e.match(RIGHTS_ERROR)) {
+          return;
+        }
       }
     } else {
       e = `error: ${JSON.stringify(e)} ${e.toString()} ${text}`;
