@@ -1,4 +1,4 @@
-import useReflare from '../src';
+import useReflare from '../../src';
 
 const request = new Request(
   'https://localhost/get',

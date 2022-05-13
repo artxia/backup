@@ -1,5 +1,5 @@
-import useReflare from '../src';
-import { UpstreamOptions } from '../types/middlewares';
+import useReflare from '../../src';
+import { UpstreamOptions } from '../../types/middlewares';
 
 const upstreamArray: UpstreamOptions[] = [
   {

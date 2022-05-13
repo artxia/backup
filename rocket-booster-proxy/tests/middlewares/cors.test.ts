@@ -1,4 +1,4 @@
-import useReflare from '../src';
+import useReflare from '../../src';
 
 interface HTTPBinGetResponse {
   headers: Record<string, string>;

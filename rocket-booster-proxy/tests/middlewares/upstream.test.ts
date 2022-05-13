@@ -1,4 +1,4 @@
-import useReflare from '../src';
+import useReflare from '../../src';
 
 test('upstream -> basic', async () => {
   const request = new Request(

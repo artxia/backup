@@ -1,6 +1,6 @@
 {
   "name": "reflare",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Lightweight and scalable reverse proxy and load balancing library built for Cloudflare Workers",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
@@ -29,13 +29,13 @@
   "bugs": {
     "url": "https://github.com/xiaoyang-sde/reflare/issues"
   },
-  "homepage": "https://booster.js.org",
+  "homepage": "https://reflare.js.org",
   "devDependencies": {
     "@cloudflare/workers-types": "^3.9.0",
-    "@types/jest": "^27.4.1",
-    "@typescript-eslint/eslint-plugin": "^5.21.0",
-    "@typescript-eslint/parser": "^5.21.0",
-    "eslint": "^8.14.0",
+    "@types/jest": "^27.5.0",
+    "@typescript-eslint/eslint-plugin": "^5.22.0",
+    "@typescript-eslint/parser": "^5.22.0",
+    "eslint": "^8.15.0",
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-config-airbnb-typescript": "^17.0.0",
     "eslint-plugin-import": "^2.26.0",

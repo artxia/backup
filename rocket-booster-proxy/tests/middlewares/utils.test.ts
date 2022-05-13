@@ -2,8 +2,8 @@ import {
   isSameOrigin,
   createResponse,
   getHostname,
-} from '../src/utils';
-import { UpstreamOptions } from '../types/middlewares/upstream';
+} from '../../src/utils';
+import { UpstreamOptions } from '../../types/middlewares/upstream';
 
 test('utils.ts -> isSameOrigin()', () => {
   const upstream: UpstreamOptions = {

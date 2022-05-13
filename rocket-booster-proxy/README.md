@@ -17,7 +17,7 @@
 [☕ Buy Me a Coffee](https://www.buymeacoffee.com/xiaoyang.liu)
 </div>
 
-🚀 **Reflare** is a lightweight and scalable reverse proxy and load balancing library built for [Cloudflare Workers](https://workers.cloudflare.com). It sits in front of web servers (e.g. web application, storage platform, or RESTful API), forwards HTTP requests or WebSocket traffics from clients to upstream servers and transforms responses with several optimizations to improve page loading time.
+🚀 **Reflare** is a lightweight and scalable reverse proxy and load balancing library built for [Cloudflare Workers](https://workers.cloudflare.com). It sits in front of web servers (e.g. web application, storage platform, or RESTful API), forwards HTTP requests or WebSocket traffics from clients to upstream servers, and transforms responses with several optimizations to improve page loading time.
 
 - ⚡ Serverless: Deploy instantly to the auto-scaling serverless platform built by Cloudflare. There's no need to manage virtual machines or containers.
 - ✈️ Load Balancing: Distribute incoming traffics among different upstream services.
@@ -28,7 +28,7 @@
 
 ### Start with `reflare-template`
 
-[Install `wrangler` CLI](https://github.com/cloudflare/wrangler#installation) and authorize `wrangler` with Cloudflare account.
+[Install `wrangler` CLI](https://github.com/cloudflare/wrangler#installation) and authorize `wrangler` with a Cloudflare account.
 
 ```console
 npm install -g @cloudflare/wrangler
@@ -93,7 +93,7 @@ addEventListener('fetch', (event) => {
 });
 ```
 
-Edit the route definition to change the behavior of Reflare. For example, the route definition below let Reflare add the `Access-Control-Allow-Origin: *` header to each response from the upstream service.
+Edit the route definition to change the behavior of Reflare. For example, the route definition below lets Reflare add the `Access-Control-Allow-Origin: *` header to each response from the upstream service.
 
 ```ts
 {
@@ -140,7 +140,7 @@ Reflare could proxy WebSocket traffic to upstream services. Set up a reverse pro
 
 ### S3 Bucket with custom response headers
 
-Reflare could set custom headers to request and response. Set up a reverse proxy for [https://example.s3.amazonaws.com](https://example.s3.amazonaws.com):
+Reflare could set custom headers to the request and response. Set up a reverse proxy for [https://example.s3.amazonaws.com](https://example.s3.amazonaws.com):
 
 ```ts
 {
@@ -171,7 +171,7 @@ Reflare could set custom headers to request and response. Set up a reverse proxy
 Reflare implements express-like route matching. Reflare matches the path and HTTP method of each incoming request with the list of route definitions and forwards the request to the first matched route.
 
 - `path`: The path that matches the route
-- `methods`: The list of HTTP methods that matches the route
+- `methods`: The list of HTTP methods that match the route
 
 ```ts
 // Matches all requests
@@ -199,7 +199,7 @@ reflare.push({
 - `protocol`: The protocol scheme of the upstream server (optional, defaults to `'https'`)
 - `port`: The port of the upstream server (optional, defaults to `80` or `443` based on `protocol`)
 - `timeout`: The maximum wait time on a request to the upstream server (optional, defaults to `10000`)
-- `weight`: The weight of the server that will be accounted as part of the load balancing decision (optional, defaults to `1`)
+- `weight`: The weight of the server that will be accounted for as part of the load balancing decision (optional, defaults to `1`)
 
 ```ts
 reflare.push({
@@ -319,15 +319,15 @@ reflare.push({
   - `string[]`: an array of acceptable origins.
   - `*`: allow any origin to access the resource.
 
-- `methods`: Configures the `Access-Control-Allow-Methods` CORS header. Expects an array of valid HTTP methods or `*`. (optional, defaults to reflecting the method specified in the request’s `Access-Control-Request-Method` header)
+- `methods`: Configures the `Access-Control-Allow-Methods` CORS header. Expect an array of valid HTTP methods or `*`. (optional, defaults to reflecting the method specified in the request’s `Access-Control-Request-Method` header)
 
-- `allowedHeaders`: Configures the `Access-Control-Allow-Headers` CORS header. Expects an array of HTTP headers or *. (optional, defaults to reflecting the headers specified in the request’s `Access-Control-Request-Headers` header.)
+- `allowedHeaders`: Configures the `Access-Control-Allow-Headers` CORS header. Expect an array of HTTP headers or *. (optional, defaults to reflecting the headers specified in the request’s `Access-Control-Request-Headers` header.)
 
-- `exposedHeaders`: Configures the `Access-Control-Expose-Headers` CORS header. Expects an array of HTTP headers or `*`. (optional, defaults to `[]`)
+- `exposedHeaders`: Configures the `Access-Control-Expose-Headers` CORS header. Expect an array of HTTP headers or `*`. (optional, defaults to `[]`)
 
-- `credentials`: Configures the `Access-Control-Allow-Credentials` CORS header. Set to true to pass the header, otherwise it is omitted. (optional, defaults to `false`)
+- `credentials`: Configures the `Access-Control-Allow-Credentials` CORS header. Set to true to pass the header, or it is omitted. (optional, defaults to `false`)
 
-- `maxAge`: Configures the `Access-Control-Max-Age` CORS header. Set to an integer to pass the header, otherwise it is omitted. (optional)
+- `maxAge`: Configures the `Access-Control-Max-Age` CORS header. Set to an integer to pass the header, or it is omitted. (optional)
 
 ```ts
 reflare.push({
@@ -353,9 +353,9 @@ reflare.push({
 
 ### Optimization
 
-Cloudflare Workers provides several optimization by default.
+Cloudflare Workers provides several optimizations by default.
 
-- [Brotli](https://brotli.org/): Speed up page load times for visitor’s HTTPS traffic by applying Brotli compression.
+- [Brotli](https://brotli.org/): Speed up page load times for visitors’ HTTPS traffic by applying Brotli compression.
 - [HTTP/2](https://developers.google.com/web/fundamentals/performance/http2): Improve page load time by connection multiplexing, header compression, and server push.
 - [HTTP/3 with QUIC](https://en.wikipedia.org/wiki/HTTP/3): Accelerate HTTP requests by using QUIC, which provides encryption and performance improvements compared to TCP and TLS.
 - [0-RTT Connection Resumption](https://blog.cloudflare.com/introducing-0-rtt/): Improve performance for clients who have previously connected to the website.
