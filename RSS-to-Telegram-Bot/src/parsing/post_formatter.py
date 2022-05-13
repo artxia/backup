@@ -156,7 +156,7 @@ class PostFormatter:
         tags = tags or []
 
         param_hash = f'{sub_title}|{tags}|{send_mode}|{length_limit}|{link_preview}|' \
-                     f'{display_author}|{display_via}|{display_title}|{style}'
+                     f'{display_author}|{display_via}|{display_title}|{display_media}|{style}'
 
         if param_hash in self.__param_to_option_cache:
             option_hash = self.__param_to_option_cache[param_hash]
@@ -289,6 +289,13 @@ class PostFormatter:
 
         if message_type == NORMAL_MESSAGE and display_media == ONLY_MEDIA_NO_CONTENT and self.media:
             message_type = LINK_MESSAGE
+
+        # ---- re-enable title if needed ----
+        if (
+                title_type == NO_POST_TITLE and self.title
+                and display_title == AUTO and message_type in {TELEGRAPH_MESSAGE, LINK_MESSAGE}
+        ):
+            title_type = POST_TITLE_NO_LINK
 
         # ---- determine need_media ----
         need_media = (
@@ -515,8 +522,12 @@ class PostFormatter:
                     dup_medium.original_urls = (enclosure.url,) + dup_medium.original_urls
                     dup_medium.chosen_url = enclosure.url
                     continue
-                if not utils.isAbsoluteHttpLink(enclosure.url) and parsed.parser.soup.findAll('a', href=enclosure.url):
-                    continue  # the link is not an HTTP link and is already appearing in the post
+                if not utils.isAbsoluteHttpLink(enclosure.url):
+                    if parsed.parser.soup.findAll('a', href=enclosure.url):
+                        continue  # the link is not an HTTP link and is already appearing in the post
+                    else:
+                        medium = File(enclosure.url)
+                        medium.valid = False
                 elif not enclosure.type:
                     medium = File(enclosure.url)
                 elif any(keyword in enclosure.type for keyword in ('webp', 'svg')):
