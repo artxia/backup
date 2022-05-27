@@ -1,14 +1,11 @@
 from __future__ import annotations
 
+from . import env  # the event loop and basic configurations are initialized in env, so import it first
+from . import pool  # the process pool need to be initialized once the event loop is ready to reduce memory consumption
+
+pool.init()
+
 import asyncio
-
-try:
-    import uvloop
-
-    uvloop.install()
-except ImportError:  # uvloop do not support Windows
-    uvloop = None
-
 from functools import partial
 from time import sleep
 from typing import Optional
@@ -19,91 +16,75 @@ from telethon.errors import ApiIdPublishedFloodError, RPCError
 from telethon.tl import types
 from random import sample
 from os import path
+from signal import signal, SIGTERM
 
-from . import env, log, db, command
+from . import log, db, command
 from .i18n import i18n, ALL_LANGUAGES, get_commands_list
 from .parsing import tgraph
 
 # log
 logger = log.getLogger('RSStT')
 
-# initializing bot
 loop = env.loop
-
 bot: Optional[TelegramClient] = None
-if not env.API_ID or not env.API_HASH:
-    logger.info('API_ID and/or API_HASH not set, use sample APIs instead. API_ID_PUBLISHED_FLOOD_ERROR may occur.')
-    API_KEYs = {api_id: env.SAMPLE_APIS[api_id]
-                for api_id in sample(tuple(env.SAMPLE_APIS.keys()), len(env.SAMPLE_APIS))}
-else:
-    API_KEYs = {env.API_ID: env.API_HASH}
+pre_tasks = []
 
-# pre tasks
-pre_tasks = [loop.create_task(db.init())]
 
-if env.PORT:
-    # enable redirect server for Railway, Heroku, etc
-    from . import redirect_server
+def init():
+    global bot
 
-    pre_tasks.append(loop.create_task(redirect_server.run(port=env.PORT)))
+    if not env.API_ID or not env.API_HASH:
+        logger.info('API_ID and/or API_HASH not set, use sample APIs instead. API_ID_PUBLISHED_FLOOD_ERROR may occur.')
+        api_keys = {api_id: env.SAMPLE_APIS[api_id]
+                    for api_id in sample(tuple(env.SAMPLE_APIS.keys()), len(env.SAMPLE_APIS))}
+    else:
+        api_keys = {env.API_ID: env.API_HASH}
 
-sleep_for = 0
-while API_KEYs:
-    sleep_for += 10
-    API_ID, API_HASH = API_KEYs.popitem()
-    try:
-        bot = TelegramClient(path.join(env.config_folder_path, 'bot'), API_ID, API_HASH,
-                             proxy=env.TELEGRAM_PROXY_DICT, request_retries=2, flood_sleep_threshold=60,
-                             raise_last_call_error=True, loop=loop).start(bot_token=env.TOKEN)
-        break
-    except ApiIdPublishedFloodError:
-        if not API_KEYs:
-            logger.warning('API_ID_PUBLISHED_FLOOD_ERROR occurred.')
+    # pre tasks
+    pre_tasks.extend((
+        loop.create_task(db.init()),
+        loop.create_task(tgraph.init()),
+    ))
+
+    if env.PORT:
+        # enable redirect server for Railway, Heroku, etc
+        from . import redirect_server
+
+        pre_tasks.append(loop.create_task(redirect_server.run(port=env.PORT)))
+
+    sleep_for = 0
+    while api_keys:
+        sleep_for += 10
+        api_id, api_hash = api_keys.popitem()
+        try:
+            bot = TelegramClient(path.join(env.config_folder_path, 'bot'), api_id, api_hash,
+                                 proxy=env.TELEGRAM_PROXY_DICT, request_retries=2, flood_sleep_threshold=60,
+                                 raise_last_call_error=True, loop=loop).start(bot_token=env.TOKEN)
             break
-        logger.warning(f'API_ID_PUBLISHED_FLOOD_ERROR occurred. Sleep for {sleep_for}s and retry.')
-        sleep(sleep_for)
-    except Exception as e:
-        logger.critical('Unknown error occurred during login:', exc_info=e)
-        break
+        except ApiIdPublishedFloodError:
+            if not api_keys:
+                logger.warning('API_ID_PUBLISHED_FLOOD_ERROR occurred.')
+                break
+            logger.warning(f'API_ID_PUBLISHED_FLOOD_ERROR occurred. Sleep for {sleep_for}s and retry.')
+            sleep(sleep_for)
+        except Exception as e:
+            logger.critical('Unknown error occurred during login:', exc_info=e)
+            break
 
-if bot is None:
-    logger.critical('LOGIN FAILED!')
-    loop.run_until_complete(db.close())
-    exit(1)
+    if bot is None:
+        logger.critical('LOGIN FAILED!')
+        loop.run_until_complete(post())
+        exit(1)
 
-env.bot = bot
-env.bot_peer = loop.run_until_complete(bot.get_me(input_peer=False))
-env.bot_input_peer = loop.run_until_complete(bot.get_me(input_peer=True))
-env.bot_id = env.bot_peer.id
+    env.bot = bot
+    env.bot_peer = loop.run_until_complete(bot.get_me(input_peer=False))
+    env.bot_input_peer = loop.run_until_complete(bot.get_me(input_peer=True))
+    env.bot_id = env.bot_peer.id
 
 
 async def pre():
     # wait for pre tasks
     await asyncio.gather(*pre_tasks)
-
-    # noinspection PyTypeChecker
-    manager_lang: Optional[str] = await db.User.get_or_none(id=env.MANAGER).values_list('lang', flat=True)
-
-    set_bot_commands_tasks = (
-        loop.create_task(
-            command.utils.set_bot_commands(scope=types.BotCommandScopeDefault(),
-                                           lang_code='',
-                                           commands=get_commands_list())
-        ),
-        *(
-            loop.create_task(
-                command.utils.set_bot_commands(scope=types.BotCommandScopeDefault(),
-                                               lang_code=i18n[lang]['iso_639_code'],
-                                               commands=get_commands_list(lang=lang))
-            )
-            for lang in ALL_LANGUAGES if len(i18n[lang]['iso_639_code']) == 2
-        ),
-        loop.create_task(
-            command.utils.set_bot_commands(scope=types.BotCommandScopePeer(types.InputPeerUser(env.MANAGER, 0)),
-                                           lang_code='',
-                                           commands=get_commands_list(lang=manager_lang, manager=True))
-        ),
-    )
 
     bare_target_matcher = r'(?P<target>@\w{5,}|(-100|\+)\d+)'
     target_matcher = rf'(\s+{bare_target_matcher})?'
@@ -220,6 +201,32 @@ async def pre():
     bot.add_event_handler(command.misc.cmd_start,
                           command.utils.GroupMigratedAction())
 
+
+async def lazy():
+    # noinspection PyTypeChecker
+    manager_lang: Optional[str] = await db.User.get_or_none(id=env.MANAGER).values_list('lang', flat=True)
+
+    set_bot_commands_tasks = (
+        loop.create_task(
+            command.utils.set_bot_commands(scope=types.BotCommandScopeDefault(),
+                                           lang_code='',
+                                           commands=get_commands_list())
+        ),
+        *(
+            loop.create_task(
+                command.utils.set_bot_commands(scope=types.BotCommandScopeDefault(),
+                                               lang_code=i18n[lang]['iso_639_code'],
+                                               commands=get_commands_list(lang=lang))
+            )
+            for lang in ALL_LANGUAGES if len(i18n[lang]['iso_639_code']) == 2
+        ),
+        loop.create_task(
+            command.utils.set_bot_commands(scope=types.BotCommandScopePeer(types.InputPeerUser(env.MANAGER, 0)),
+                                           lang_code='',
+                                           commands=get_commands_list(lang=manager_lang, manager=True))
+        ),
+    )
+
     # get set_bot_commands tasks result
     try:
         await asyncio.gather(*set_bot_commands_tasks)
@@ -228,33 +235,43 @@ async def pre():
 
 
 async def post():
-    await db.close()
+    await asyncio.gather(db.close(), tgraph.close())
+    pool.shutdown()
 
 
 def main():
-    logger.info(f"RSS-to-Telegram-Bot ({', '.join(env.VERSION.split())}) started!\n"
-                f"MANAGER: {env.MANAGER}\n"
-                f"T_PROXY (for Telegram): {env.TELEGRAM_PROXY or 'not set'}\n"
-                f"R_PROXY (for RSS): {env.REQUESTS_PROXIES['all'] if env.REQUESTS_PROXIES else 'not set'}\n"
-                f"DATABASE: {env.DATABASE_URL.split('://', 1)[0]}\n"
-                f"TELEGRAPH: {f'Enable ({tgraph.apis.count} accounts)' if tgraph.apis else 'Disable'}\n"
-                f"UVLOOP: {'Enable' if uvloop is not None else 'Disable'}\n"
-                f"MULTIUSER: {'Enable' if env.MULTIUSER else 'Disable'}")
-    if env.MANAGER_PRIVILEGED:
-        logger.warning('Bot manager privileged mode is enabled! '
-                       'Use with caution and should be disabled in production!')
-
-    loop.run_until_complete(pre())
-
-    scheduler = AsyncIOScheduler(event_loop=loop)
-    scheduler.add_job(func=command.monitor.run_monitor_task,
-                      trigger=CronTrigger(minute='*', second=env.CRON_SECOND, timezone='UTC'),
-                      max_instances=10,
-                      misfire_grace_time=10)
-    scheduler.start()
-
     try:
+        signal(SIGTERM, lambda *_, **__: exit(1))  # graceful exit handler
+
+        init()
+
+        loop.run_until_complete(pre())
+
+        logger.info(f"RSS-to-Telegram-Bot ({', '.join(env.VERSION.split())}) started!\n"
+                    f"MANAGER: {env.MANAGER}\n"
+                    f"T_PROXY (for Telegram): {env.TELEGRAM_PROXY or 'not set'}\n"
+                    f"R_PROXY (for RSS): {env.REQUESTS_PROXIES['all'] if env.REQUESTS_PROXIES else 'not set'}\n"
+                    f"DATABASE: {env.DATABASE_URL.split('://', 1)[0]}\n"
+                    f"TELEGRAPH: {f'Enable ({tgraph.apis.count} accounts)' if tgraph.apis else 'Disable'}\n"
+                    f"UVLOOP: {'Enable' if env.uvloop_enabled else 'Disable'}\n"
+                    f"MULTIUSER: {'Enable' if env.MULTIUSER else 'Disable'}\n"
+                    f"CPU: {pool.PROCESS_COUNT} (usable) / {pool.AVAIL_CPU_COUNT} (available) / {pool.CPU_COUNT} (total)")
+        if env.MANAGER_PRIVILEGED:
+            logger.warning('Bot manager privileged mode is enabled! '
+                           'Use with caution and should be disabled in production!')
+
+        loop.create_task(lazy())
+
+        scheduler = AsyncIOScheduler(event_loop=loop)
+        scheduler.add_job(func=command.monitor.run_monitor_task,
+                          trigger=CronTrigger(minute='*', second=env.CRON_SECOND, timezone='UTC'),
+                          max_instances=10,
+                          misfire_grace_time=10)
+        scheduler.start()
+
         bot.run_until_disconnected()
+    except (KeyboardInterrupt, SystemExit):
+        pass
     finally:
         loop.run_until_complete(post())
 

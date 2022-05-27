@@ -232,7 +232,7 @@ IMAGES_WESERV_NL: Final = (
 del _images_weserv_nl
 
 # ----- db config -----
-_database_url = os.environ.get('DATABASE_URL') or f'sqlite://{config_folder_path}/db.sqlite3?journal_mode=OFF'
+_database_url = os.environ.get('DATABASE_URL') or f'sqlite://{config_folder_path}/db.sqlite3'
 DATABASE_URL: Final = (_database_url.replace('postgresql', 'postgres', 1) if _database_url.startswith('postgresql')
                        else _database_url)
 del _database_url
@@ -241,6 +241,8 @@ del _database_url
 TABLE_TO_IMAGE: Final = __bool_parser(os.environ.get('TABLE_TO_IMAGE'))
 TRAFFIC_SAVING: Final = __bool_parser(os.environ.get('TRAFFIC_SAVING'))
 LAZY_MEDIA_VALIDATION: Final = __bool_parser(os.environ.get('LAZY_MEDIA_VALIDATION'))
+NO_UVLOOP: Final = __bool_parser(os.environ.get('NO_UVLOOP'))
+NO_MULTIPROCESSING: Final = __bool_parser(os.environ.get('NO_MULTIPROCESSING'))
 DEBUG: Final = __bool_parser(os.environ.get('DEBUG'))
 __configure_logging(  # config twice to make .env file work
     level=colorlog.DEBUG if DEBUG else colorlog.INFO,
@@ -286,5 +288,15 @@ bot_id: Optional[int] = None  # placeholder
 bot_peer: Optional[User] = None  # placeholder
 bot_input_peer: Optional[InputPeerUser] = None  # placeholder
 
+# ----- loop initialization -----
+uvloop_enabled = False
+if not NO_UVLOOP:
+    try:
+        import uvloop
+
+        uvloop.install()
+        uvloop_enabled = True
+    except ImportError:  # not installed (e.g. Windows)
+        uvloop = None
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)

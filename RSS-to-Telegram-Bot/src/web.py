@@ -1,8 +1,8 @@
 from __future__ import annotations
-from typing import Union, Optional, AnyStr, Any
+from typing import Union, Optional, AnyStr
 from typing_extensions import Final
 from collections.abc import Callable
-from .compat import nullcontext, ssl_create_default_context
+from .compat import nullcontext, ssl_create_default_context, AiohttpUvloopTransportHotfix
 
 import re
 import asyncio
@@ -13,7 +13,6 @@ import PIL.ImageFile
 from PIL import UnidentifiedImageError
 from bs4 import BeautifulSoup
 from io import BytesIO, SEEK_END
-from concurrent.futures import ThreadPoolExecutor
 from aiohttp_socks import ProxyConnector
 from dns.asyncresolver import resolve
 from dns.exception import DNSException
@@ -27,6 +26,7 @@ from functools import partial
 from asyncstdlib.functools import lru_cache
 
 from . import env, log, locks
+from .pool import run_async
 from .i18n import i18n
 from .errors_collection import RetryInIpv4
 
@@ -73,8 +73,6 @@ PIL.ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 logger = log.getLogger('RSStT.web')
 
-_feedparser_thread_pool = ThreadPoolExecutor(1, 'feedparser_')
-
 contentDispositionFilenameParser = partial(re.compile(r'(?<=filename=")[^"]+(?=")').search, flags=re.I)
 
 
@@ -114,7 +112,7 @@ class WebError(Exception):
 @define
 class WebResponse:
     url: str  # redirected url
-    content: Any
+    content: Optional[AnyStr]
     headers: CIMultiDictProxy[str]
     status: int
     reason: Optional[str]
@@ -123,7 +121,7 @@ class WebResponse:
 @define
 class WebFeed:
     url: str  # redirected url
-    content: Optional[str] = None
+    content: Optional[AnyStr] = None
     headers: Optional[CIMultiDictProxy[str]] = None
     status: int = -1
     reason: Optional[str] = None
@@ -227,15 +225,16 @@ async def _get(url: str, resp_callback: Callable, timeout: Optional[float] = Non
         async with aiohttp.ClientSession(connector=proxy_connector, timeout=aiohttp.ClientTimeout(total=timeout),
                                          headers=_headers) as session:
             async with session.get(url, read_bufsize=read_bufsize, read_until_eof=read_until_eof) as response:
-                status = response.status
-                content = None
-                if status == 200:
-                    content = await resp_callback(response)
-                return WebResponse(url=url,
-                                   content=content,
-                                   headers=response.headers,
-                                   status=status,
-                                   reason=response.reason)
+                async with AiohttpUvloopTransportHotfix(response):
+                    status = response.status
+                    content = None
+                    if status == 200:
+                        content = await resp_callback(response)
+                    return WebResponse(url=url,
+                                       content=content,
+                                       headers=response.headers,
+                                       status=status,
+                                       reason=response.reason)
 
     tries = 0
     retry_in_v4_flag = False
@@ -280,6 +279,16 @@ async def _get(url: str, resp_callback: Callable, timeout: Optional[float] = Non
             continue
 
 
+# bozo_exception is un-pickle-able, preventing rss_d from returning from ProcessPoolExecutor, so remove it
+def _feed_post_process_wrapper(func: Callable, *args, **kwargs):
+    rss_d = func(*args, **kwargs)
+
+    if rss_d.get('bozo_exception'):
+        del rss_d['bozo_exception']
+
+    return rss_d
+
+
 async def feed_get(url: str, timeout: Optional[float] = None, web_semaphore: Union[bool, asyncio.Semaphore] = None,
                    headers: Optional[dict] = None, verbose: bool = True) -> WebFeed:
     ret = WebFeed(url=url)
@@ -292,7 +301,7 @@ async def feed_get(url: str, timeout: Optional[float] = None, web_semaphore: Uni
         _headers['Accept'] = FEED_ACCEPT
 
     try:
-        resp = await get(url, timeout, web_semaphore, decode=True, headers=_headers)
+        resp = await get(url, timeout, web_semaphore, decode=False, headers=_headers)
         rss_content = resp.content
         ret.content = rss_content
         ret.url = resp.url
@@ -314,13 +323,17 @@ async def feed_get(url: str, timeout: Optional[float] = None, web_semaphore: Uni
             ret.error = WebError(error_name='status code error', status=status_caption, url=url, log_level=log_level)
             return ret
 
-        if len(rss_content) <= 524288:
-            rss_d = feedparser.parse(rss_content, sanitize_html=False)
-        else:  # feed too large, run in another thread to avoid blocking the bot
-            rss_d = await asyncio.get_event_loop().run_in_executor(_feedparser_thread_pool,
-                                                                   partial(feedparser.parse,
-                                                                           rss_content,
-                                                                           sanitize_html=False))
+        with BytesIO(rss_content) as rss_content_io:
+            parser = partial(_feed_post_process_wrapper,
+                             feedparser.parse,
+                             rss_content_io,
+                             response_headers={k.lower(): v for k, v in resp.headers.items()}, sanitize_html=False)
+            rss_d = (
+                parser()
+                if len(rss_content) <= 32 * 1024
+                # feed too large, run in another thread to avoid blocking the bot
+                else await run_async(parser)
+            )
 
         if 'title' not in rss_d.feed:
             ret.error = WebError(error_name='feed invalid', url=url, log_level=log_level)
@@ -360,64 +373,64 @@ async def __medium_info_callback(response: aiohttp.ClientResponse) -> tuple[int,
         return -1, -1
     is_jpeg = None
     already_read = 0
-    buffer = BytesIO()
     eof_flag = False
     exit_flag = False
-    while not exit_flag:
-        curr_chunk_length = 0
-        preloaded_length = content.total_bytes - already_read
-        while preloaded_length > IMAGE_READ_BUFFER_SIZE or curr_chunk_length < IMAGE_ITER_CHUNK_SIZE:
-            # get almost all preloaded bytes, but leaving some to avoid next automatic preloading
-            chunk = await content.read(max(preloaded_length - IMAGE_READ_BUFFER_SIZE, IMAGE_READ_BUFFER_SIZE))
-            if chunk == b'':  # EOF
-                eof_flag = True
-                break
-            if is_jpeg is None:
-                is_jpeg = chunk.startswith(SOI)
-            already_read += len(chunk)
-            curr_chunk_length += len(chunk)
-            buffer.seek(0, SEEK_END)
-            buffer.write(chunk)
+    with BytesIO() as buffer:
+        while not exit_flag:
+            curr_chunk_length = 0
             preloaded_length = content.total_bytes - already_read
-
-        if eof_flag or already_read >= IMAGE_MAX_FETCH_SIZE:
-            response.close()  # immediately close the connection to block any incoming data or retransmission
-            exit_flag = True
-
-        # noinspection PyBroadException
-        try:
-            image = PIL.Image.open(buffer)
-            width, height = image.size
-            return width, height
-        except UnidentifiedImageError:
-            return -1, -1  # not a format that PIL can handle
-        except Exception:
-            if is_jpeg:
-                file_header = buffer.getvalue()
-                find_start_pos = 0
-                for _ in range(3):
-                    pointer = -1
-                    for marker in (b'\xff\xc2', b'\xff\xc1', b'\xff\xc0'):
-                        p = file_header.find(marker, find_start_pos)
-                        if p != -1:
-                            pointer = p
-                            break
-                    if pointer != -1 and pointer + 9 <= len(file_header):
-                        if file_header.count(EOI, 0, pointer) != file_header.count(SOI, 0, pointer) - 1:
-                            # we are currently entering the thumbnail in Exif, bypassing...
-                            # (why the specifications makers made Exif so freaky?)
-                            eoi_pos = file_header.find(EOI, pointer)
-                            if eoi_pos == -1:
-                                break  # no EOI found, we could never leave the thumbnail...
-                            find_start_pos = eoi_pos + len(EOI)
-                            continue
-                        width = int(file_header[pointer + 7:pointer + 9].hex(), 16)
-                        height = int(file_header[pointer + 5:pointer + 7].hex(), 16)
-                        if min(width, height) <= 0:
-                            find_start_pos = pointer + 1
-                            continue
-                        return width, height
+            while preloaded_length > IMAGE_READ_BUFFER_SIZE or curr_chunk_length < IMAGE_ITER_CHUNK_SIZE:
+                # get almost all preloaded bytes, but leaving some to avoid next automatic preloading
+                chunk = await content.read(max(preloaded_length - IMAGE_READ_BUFFER_SIZE, IMAGE_READ_BUFFER_SIZE))
+                if chunk == b'':  # EOF
+                    eof_flag = True
                     break
+                if is_jpeg is None:
+                    is_jpeg = chunk.startswith(SOI)
+                already_read += len(chunk)
+                curr_chunk_length += len(chunk)
+                buffer.seek(0, SEEK_END)
+                buffer.write(chunk)
+                preloaded_length = content.total_bytes - already_read
+
+            if eof_flag or already_read >= IMAGE_MAX_FETCH_SIZE:
+                response.close()  # immediately close the connection to block any incoming data or retransmission
+                exit_flag = True
+
+            # noinspection PyBroadException
+            try:
+                image = PIL.Image.open(buffer)
+                width, height = image.size
+                return width, height
+            except UnidentifiedImageError:
+                return -1, -1  # not a format that PIL can handle
+            except Exception:
+                if is_jpeg:
+                    file_header = buffer.getvalue()
+                    find_start_pos = 0
+                    for _ in range(3):
+                        pointer = -1
+                        for marker in (b'\xff\xc2', b'\xff\xc1', b'\xff\xc0'):
+                            p = file_header.find(marker, find_start_pos)
+                            if p != -1:
+                                pointer = p
+                                break
+                        if pointer != -1 and pointer + 9 <= len(file_header):
+                            if file_header.count(EOI, 0, pointer) != file_header.count(SOI, 0, pointer) - 1:
+                                # we are currently entering the thumbnail in Exif, bypassing...
+                                # (why the specifications makers made Exif so freaky?)
+                                eoi_pos = file_header.find(EOI, pointer)
+                                if eoi_pos == -1:
+                                    break  # no EOI found, we could never leave the thumbnail...
+                                find_start_pos = eoi_pos + len(EOI)
+                                continue
+                            width = int(file_header[pointer + 7:pointer + 9].hex(), 16)
+                            height = int(file_header[pointer + 5:pointer + 7].hex(), 16)
+                            if min(width, height) <= 0:
+                                find_start_pos = pointer + 1
+                                continue
+                            return width, height
+                        break
     return -1, -1
 
 
@@ -449,11 +462,11 @@ async def get_page_title(url: str, allow_hostname=True, allow_path: bool = False
     r = None
     # noinspection PyBroadException
     try:
-        r = await get(url=url, timeout=2, decode=True, intended_content_type='text/html', max_size=2 * 1024)
+        r = await get(url=url, timeout=2, decode=False, intended_content_type='text/html', max_size=2 * 1024)
         if r.status != 200 or not r.content:
             raise ValueError('not an HTML page')
-        if len(r.content) <= 27:  # len of `<html><head><title></title>`
-            raise ValueError('invalid HTML')
+        # if len(r.content) <= 27:  # len of `<html><head><title></title>`
+        #     raise ValueError('invalid HTML')
         title = BeautifulSoup(r.content, 'lxml').title.text
         return title.strip()
     except Exception:

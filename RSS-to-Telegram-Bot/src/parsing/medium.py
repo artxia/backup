@@ -301,7 +301,11 @@ class Medium(AbstractMedium):
                     return True
                 medium_info = await web.get_medium_info(url)
                 if medium_info is None:
-                    continue
+                    if url.startswith(env.IMAGES_WESERV_NL) or url.startswith(env.IMG_RELAY_SERVER):
+                        continue
+                    medium_info = await web.get_medium_info(env.IMG_RELAY_SERVER + url)
+                    if medium_info is None:
+                        continue
                 self.size, self.width, self.height, self.content_type = medium_info
                 if self.type == IMAGE and self.size <= self.maxSize and min(self.width, self.height) == -1 \
                         and self.content_type and self.content_type.startswith('image') \
@@ -660,6 +664,8 @@ class UploadedImage(AbstractMedium):
                 if isinstance(self.file, BytesIO):
                     self.file.seek(0)
                 self.uploaded_file = await env.bot.upload_file(self.file)
+                if isinstance(self.file, BytesIO):
+                    self.file.close()
                 self.valid = True
             except (BadRequestError, ValueError) as e:
                 logger.debug(f'Failed to upload file ({self.info})', exc_info=e)
