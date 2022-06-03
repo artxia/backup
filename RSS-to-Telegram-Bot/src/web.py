@@ -26,7 +26,8 @@ from functools import partial
 from asyncstdlib.functools import lru_cache
 
 from . import env, log, locks
-from .pool import run_async
+from .compat import bozo_exception_removal_wrapper
+from .aio_helper import run_async_on_demand
 from .i18n import i18n
 from .errors_collection import RetryInIpv4
 
@@ -62,6 +63,7 @@ EXCEPTIONS_SHOULD_RETRY: Final = (asyncio.TimeoutError,
                                   # aiohttp.ClientPayloadError,
                                   # aiohttp.ClientResponseError,
                                   # aiohttp.ClientConnectionError,
+                                  aiohttp.ClientConnectorError,  # connection refused, etc
                                   aiohttp.ServerConnectionError,
                                   RetryInIpv4,
                                   TimeoutError,
@@ -239,9 +241,8 @@ async def _get(url: str, resp_callback: Callable, timeout: Optional[float] = Non
     tries = 0
     retry_in_v4_flag = False
     max_tries = MAX_TRIES * (1 if socket_family == 0 else 2)
-    while True:
+    while tries < max_tries:
         tries += 1
-        assert tries <= max_tries, 'Too many tries'
 
         if retry_in_v4_flag or tries > MAX_TRIES:
             socket_family = AF_INET
@@ -266,7 +267,7 @@ async def _get(url: str, resp_callback: Callable, timeout: Optional[float] = Non
         except EXCEPTIONS_SHOULD_RETRY as e:
             if isinstance(e, RetryInIpv4):
                 retry_in_v4_flag = True
-            elif socket_family == AF_INET6 and tries > MAX_TRIES:
+            elif socket_family == AF_INET6 and tries >= MAX_TRIES:
                 retry_in_v4_flag = True
                 err_msg = str(e).strip()
                 e = RetryInIpv4(reason=f'{type(e).__name__}' + (f': {err_msg}' if err_msg else ''))
@@ -277,16 +278,6 @@ async def _get(url: str, resp_callback: Callable, timeout: Optional[float] = Non
                          + f'), retrying: {url}')
             await asyncio.sleep(0.1)
             continue
-
-
-# bozo_exception is un-pickle-able, preventing rss_d from returning from ProcessPoolExecutor, so remove it
-def _feed_post_process_wrapper(func: Callable, *args, **kwargs):
-    rss_d = func(*args, **kwargs)
-
-    if rss_d.get('bozo_exception'):
-        del rss_d['bozo_exception']
-
-    return rss_d
 
 
 async def feed_get(url: str, timeout: Optional[float] = None, web_semaphore: Union[bool, asyncio.Semaphore] = None,
@@ -324,15 +315,11 @@ async def feed_get(url: str, timeout: Optional[float] = None, web_semaphore: Uni
             return ret
 
         with BytesIO(rss_content) as rss_content_io:
-            parser = partial(_feed_post_process_wrapper,
-                             feedparser.parse,
-                             rss_content_io,
-                             response_headers={k.lower(): v for k, v in resp.headers.items()}, sanitize_html=False)
-            rss_d = (
-                parser()
-                if len(rss_content) <= 32 * 1024
-                # feed too large, run in another thread to avoid blocking the bot
-                else await run_async(parser)
+            rss_d = await run_async_on_demand(
+                partial(bozo_exception_removal_wrapper,
+                        feedparser.parse, rss_content_io, sanitize_html=False,
+                        response_headers={k.lower(): v for k, v in resp.headers.items()}),
+                condition=len(rss_content) > 64 * 1024
             )
 
         if 'title' not in rss_d.feed:
@@ -467,7 +454,9 @@ async def get_page_title(url: str, allow_hostname=True, allow_path: bool = False
             raise ValueError('not an HTML page')
         # if len(r.content) <= 27:  # len of `<html><head><title></title>`
         #     raise ValueError('invalid HTML')
-        title = BeautifulSoup(r.content, 'lxml').title.text
+        soup = await run_async_on_demand(BeautifulSoup, r.content, 'lxml',
+                                         prefer_pool='thread', condition=len(r.content) > 64 * 1024)
+        title = soup.title.text
         return title.strip()
     except Exception:
         content_disposition = r.headers.get('Content-Disposition') if r else None

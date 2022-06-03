@@ -12,7 +12,7 @@ from cjkwrap import fill
 from warnings import filterwarnings
 from cachetools import TTLCache
 
-from ..pool import run_async
+from ..aio_helper import run_async
 from .utils import logger
 from ..compat import cached_async
 
@@ -193,4 +193,4 @@ def _convert_table_to_png(table_html: str) -> Optional[bytes]:
 
 @cached_async(TTLCache(maxsize=32, ttl=180))
 async def convert_table_to_png(table_html: str) -> Optional[bytes]:
-    return await run_async(_convert_table_to_png, table_html)
+    return await run_async(_convert_table_to_png, table_html, prefer_pool='process')

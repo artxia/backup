@@ -8,7 +8,7 @@ feedparser==6.0.10  # feedparser@git+https://github.com/Rongronggg9/feedparser.g
 listparser==0.18
 pillow==9.1.1
 beautifulsoup4==4.11.1
-lxml==4.8.0
+lxml==4.9.0
 rapidfuzz==2.0.11
 emoji==1.7.0
 minify-html>=0.6.10, <=0.8.0  # 0.6.10 for Python 3.7 (however, minify-html<0.7.0 comes with no arm64 support)
@@ -34,7 +34,7 @@ python-dotenv==0.20.0
 multidict==6.0.2
 attrs==21.4.0
 asyncstdlib==3.10.4
-cachetools==5.1.0
+cachetools==5.2.0
 CJKwrap==2.2
 typing-extensions==4.2.0
 uvloop==0.16.0; python_version>="3.7" and sys_platform!='win32' and sys_platform!='cygwin' and sys_platform!='cli'
