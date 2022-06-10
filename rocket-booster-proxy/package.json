@@ -31,18 +31,18 @@
   },
   "homepage": "https://reflare.js.org",
   "devDependencies": {
-    "@cloudflare/workers-types": "^3.9.0",
+    "@cloudflare/workers-types": "^3.11.0",
     "@types/jest": "^27.5.0",
-    "@typescript-eslint/eslint-plugin": "^5.25.0",
-    "@typescript-eslint/parser": "^5.23.0",
-    "eslint": "^8.15.0",
+    "@typescript-eslint/eslint-plugin": "^5.27.0",
+    "@typescript-eslint/parser": "^5.27.0",
+    "eslint": "^8.17.0",
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-config-airbnb-typescript": "^17.0.0",
     "eslint-plugin-import": "^2.26.0",
     "jest": "^27.5.1",
-    "jest-environment-miniflare": "^2.4.0",
-    "miniflare": "^2.3.0",
+    "jest-environment-miniflare": "^2.5.0",
+    "miniflare": "^2.5.0",
     "ts-jest": "^27.1.4",
-    "typescript": "^4.6.4"
+    "typescript": "^4.7.3"
   }
 }
