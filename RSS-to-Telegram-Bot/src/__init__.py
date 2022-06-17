@@ -1,11 +1,18 @@
 from __future__ import annotations
 
-from . import env  # the event loop and basic configurations are initialized in env, so import it first
+# the event loop and basic configurations are initialized in env, so import it first
+# some logger configurations are set in log, so import it second to make them effective in child processes
+from . import env, log
 from . import aio_helper
 
 # the process pool need to be initialized once the event loop is ready to reduce memory consumption
 aio_helper.init()
 
+# register main-process-only log handlers
+log.init()
+
+import os
+import signal
 import asyncio
 from functools import partial
 from time import sleep
@@ -16,8 +23,6 @@ from telethon import TelegramClient, events
 from telethon.errors import ApiIdPublishedFloodError, RPCError
 from telethon.tl import types
 from random import sample
-from os import path
-from signal import signal, SIGTERM
 
 from . import log, db, command
 from .i18n import i18n, ALL_LANGUAGES, get_commands_list
@@ -58,7 +63,7 @@ def init():
         sleep_for += 10
         api_id, api_hash = api_keys.popitem()
         try:
-            bot = TelegramClient(path.join(env.config_folder_path, 'bot'), api_id, api_hash,
+            bot = TelegramClient(os.path.join(env.config_folder_path, 'bot'), api_id, api_hash,
                                  proxy=env.TELEGRAM_PROXY_DICT, request_retries=2, flood_sleep_threshold=60,
                                  raise_last_call_error=True, loop=loop).start(bot_token=env.TOKEN)
             break
@@ -139,6 +144,8 @@ async def pre():
                           events.NewMessage(pattern=construct_command_matcher('/test')))
     bot.add_event_handler(command.administration.cmd_user_info_or_callback_set_user,
                           events.NewMessage(pattern=construct_command_matcher('/user_info')))
+    bot.add_event_handler(command.administration.cmd_set_sub_limit,
+                          events.NewMessage(pattern=construct_command_matcher('/set_sub_limit')))
     bot.add_event_handler(command.administration.cmd_set_option,
                           events.NewMessage(pattern=construct_command_matcher('/set_option')))
 
@@ -193,6 +200,8 @@ async def pre():
                                                        rf'{callback_target_matcher}$'))
     bot.add_event_handler(command.administration.cmd_user_info_or_callback_set_user,
                           events.CallbackQuery(pattern=r'^set_user=-?\d+,(-1|0|1)$'))
+    bot.add_event_handler(command.administration.callback_reset_sub_limit,
+                          events.CallbackQuery(pattern=r'^reset_sub_limit=-?\d+$'))
     # inline query handler
     bot.add_event_handler(command.misc.inline_command_constructor,
                           events.InlineQuery())
@@ -236,13 +245,18 @@ async def lazy():
 
 
 async def post():
-    await asyncio.gather(db.close(), tgraph.close())
-    aio_helper.shutdown()
+    try:
+        loop.call_later(10, lambda: os.kill(os.getpid(), signal.SIGKILL))  # double insurance
+        logger.info('Exiting gracefully...')
+        await asyncio.gather(db.close(), tgraph.close())
+        aio_helper.shutdown()
+    except Exception as e:
+        logger.error('Error when exiting gracefully: ', exc_info=e)
 
 
 def main():
     try:
-        signal(SIGTERM, lambda *_, **__: exit(1))  # graceful exit handler
+        signal.signal(signal.SIGTERM, lambda *_, **__: exit(1))  # graceful exit handler
 
         init()
 

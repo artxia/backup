@@ -273,17 +273,26 @@ async def have_subs(user_id: int) -> bool:
     return await db.Sub.filter(user=user_id).exists()
 
 
-async def check_sub_limit(user_id: int) -> tuple[bool, int, int]:
-    if user_id == env.MANAGER:
-        return False, -1, -1
-    # noinspection PyTypeChecker
-    limit: Optional[int] = await db.User.get_or_none(id=user_id).values_list('sub_limit', flat=True)
-    if limit is None:
-        limit = db.EffectiveOptions.user_sub_limit if user_id > 0 else db.EffectiveOptions.channel_or_group_sub_limit
-    if limit < 0:
-        return False, -1, -1
-    count = await count_sub(user_id)
-    return count >= limit, count, limit
+async def check_sub_limit(user_id: int, force_count_current: bool = False) -> tuple[bool, int, int, bool]:
+    """
+    :return: exceeded (bool), current count (int), limit (int), is default limit (bool)
+    """
+    curr_count: int = -1
+    limit: int = -1
+    is_default_limit: bool = False
+    if user_id != env.MANAGER:
+        # noinspection PyTypeChecker
+        limit: Optional[int] = await db.User.get_or_none(id=user_id).values_list('sub_limit', flat=True)
+        if limit is None:
+            limit: int = (db.EffectiveOptions.user_sub_limit
+                          if user_id > 0
+                          else db.EffectiveOptions.channel_or_group_sub_limit)
+            is_default_limit = True
+
+    if force_count_current or limit >= 0:
+        curr_count = await count_sub(user_id)
+
+    return curr_count >= limit >= 0, curr_count, limit, is_default_limit
 
 
 async def activate_feed(feed: db.Feed) -> db.Feed:
