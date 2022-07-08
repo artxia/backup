@@ -6,10 +6,12 @@
 const ASSET_URL = 'https://hunshcn.github.io/gh-proxy/'
 // 前缀，如果自定义路由为example.com/gh/*，将PREFIX改为 '/gh/'，注意，少一个杠都会错！
 const PREFIX = '/'
-// 分支文件使用jsDelivr镜像的开关，0为关闭，默认开启
+// 分支文件使用jsDelivr镜像的开关，0为关闭，默认关闭
 const Config = {
-    jsdelivr: 1
+    jsdelivr: 0
 }
+
+const whiteList = [] // 白名单，路径里面有包含字符的才会通过，e.g. ['/username/']
 
 /** @type {RequestInit} */
 const PREFLIGHT_INIT = {
@@ -117,6 +119,16 @@ function httpHandler(req, pathname) {
     const reqHdrNew = new Headers(reqHdrRaw)
 
     let urlStr = pathname
+    let flag = false
+    for (let i of whiteList) {
+        if (urlStr.includes(i)) {
+            flag = true
+            break
+        }
+    }
+    if (!flag) {
+        return new Response("blocked", {status: 403})
+    }
     if (urlStr.startsWith('github')) {
         urlStr = 'https://' + urlStr
     }
