@@ -74,7 +74,12 @@ async def on_greeting(event):
         text += ' {}'.format(message.file.name)# 追加上文件名
 
       # 打印消息
-      logger.debug(f'event.chat.username: {event.chat.username},event.chat.id:{event.chat.id},event.chat.title:{event.chat.title},event.message.id:{event.message.id},text:{text}')
+      _title = ''
+      if not hasattr(event.chat,'title'):
+        logger.warn('event.chat not found title:',event.chat)
+      else:
+        _title = f'event.chat.title:{event.chat.title},'
+      logger.debug(f'event.chat.username: {event.chat.username},event.chat.id:{event.chat.id},{_title} event.message.id:{event.message.id},text:{text}')
 
       # 1.方法(失败)：转发消息 
       # chat = 'keyword_alert_bot' #能转发 但是不能真对特定用户。只能转发给当前允许账户的bot
@@ -101,11 +106,16 @@ where (l.channel_name = ? or l.chat_id = ?)  and l.status = 0  order by l.create
 
         for receiver,keywords,l_id,l_chat_id in find:
           try:
-
-            # 消息发送去重KEY（diskcache支持原子操作）
-            # 唯一性：user_chat_id，订阅列表id。
-            # 若重复订阅允许重复推送
-            CACHE_KEY_UNIQUE_SEND = f'{receiver}_{l_id}'
+            # 消息发送去重规则
+            MSG_UNIQUE_RULE_MAP = {
+              'SUBSCRIBE_ID': f'{receiver}_{l_id}',
+              'MESSAGE_ID': f'{receiver}_{message.id}',
+            }
+            if 'msg_unique_rule' not in config:
+              config['msg_unique_rule'] = 'SUBSCRIBE_ID'
+            assert config['msg_unique_rule'] in MSG_UNIQUE_RULE_MAP,'config "msg_unique_rule" error!!!'
+            CACHE_KEY_UNIQUE_SEND = MSG_UNIQUE_RULE_MAP[config['msg_unique_rule']]
+            logger.debug(f'msg_unique_rule:{config["msg_unique_rule"]} --> {CACHE_KEY_UNIQUE_SEND}')
 
             # 优先返回可预览url
             channel_url = f'https://t.me/{event.chat.username}/' if event.chat.username else get_channel_url(event.chat.username,event.chat_id)
@@ -143,7 +153,7 @@ where (l.channel_name = ? or l.chat_id = ?)  and l.status = 0  order by l.create
                   await bot.send_message(receiver, message_str,link_preview = True,parse_mode = 'markdown')
                 else:
                   # 已发送该消息
-                  logger.error(f'REGEX send repeat. {receiver}_{l_id}:{channel_url}')
+                  logger.debug(f'REGEX send repeat. rule_name:{config["msg_unique_rule"]}  {CACHE_KEY_UNIQUE_SEND}:{channel_url}')
                   continue
 
               else:
@@ -160,7 +170,7 @@ where (l.channel_name = ? or l.chat_id = ?)  and l.status = 0  order by l.create
                   await bot.send_message(receiver, message_str,link_preview = True,parse_mode = 'markdown')
                 else:
                   # 已发送该消息
-                  logger.error(f'TEXT send repeat. {receiver}_{l_id}:{channel_url}')
+                  logger.debug(f'TEXT send repeat. rule_name:{config["msg_unique_rule"]}  {CACHE_KEY_UNIQUE_SEND}:{channel_url}')
                   continue
           except errors.rpcerrorlist.UserIsBlockedError  as _e:
             # User is blocked (caused by SendMessageRequest)  用户已手动停止bot
@@ -174,6 +184,8 @@ where (l.channel_name = ? or l.chat_id = ?)  and l.status = 0  order by l.create
             user_id = utils.db.user.get_or_none(chat_id=receiver)
             if user_id:
               isdel2 = utils.db.user_subscribe_list.delete().where(utils.User_subscribe_list.user_id == user_id.id).execute()
+          except AssertionError as _e:
+            raise _e
           except Exception as _e:
             logger.error(f'{_e}')
       else:
@@ -463,7 +475,10 @@ async def unsubscribe_id(event):
   text = regex.sub('\s*,\s*',',',text) # 确保英文逗号间隔中间都没有空格  如 "https://t.me/xiaobaiup, https://t.me/com9ji"
   splitd = [i for i in regex.split('\s+',text) if i]# 删除空元素
   if len(splitd) > 1:
-    ids = [int(i) for i in splitd[1].split(',')]
+    ids = [int(i) for i in splitd[1].split(',') if i.isnumeric()]
+    if not ids:
+      await event.respond('Please input your unsubscribe_id. \ne.g. `/unsubscribe_id 123,321`')
+      raise events.StopPropagation
     result = []
     for i in ids:
       re_update = utils.db.user_subscribe_list.update(status = 1 ).where(utils.User_subscribe_list.id == i,utils.User_subscribe_list.user_id == user_id)#更新状态
