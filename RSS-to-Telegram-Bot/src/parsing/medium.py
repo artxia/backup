@@ -128,6 +128,11 @@ class AbstractMedium(ABC):
     def info(self) -> str:
         pass
 
+    @property
+    @abstractmethod
+    def describe(self) -> str:
+        pass
+
     async def upload(self, chat_id: int, force_upload: bool = False) \
             -> tuple[Optional[TypeMessageMedia], Optional[TypeMedium]]:
         if self.valid is None:
@@ -171,7 +176,7 @@ class AbstractMedium(ABC):
                             tries += 1
                             if tries > max_tries:
                                 logger.debug('Medium dropped due to too many upload retries: '
-                                             f'{self.info}, {self.original_urls[0]}')
+                                             f'{self.describe}')
                                 self.valid = False
                                 self.need_type_fallback = False
                                 return None, None
@@ -209,13 +214,13 @@ class AbstractMedium(ABC):
 
             except locks.ContextTimeoutError:
                 logger.error(f'Medium dropped due to lock acquisition timeout ({chat_id}): '
-                             f'{self.info}, {self.original_urls[0]}')
+                             f'{self.describe}')
                 return None, None
             except (FloodWaitError, SlowModeWaitError) as e:
                 # telethon has retried for us, but we release locks and retry again here to see if it will be better
                 if error_tries >= 1:
                     logger.error(f'Medium dropped due to too many flood control retries ({chat_id}): '
-                                 f'{self.info}, {self.original_urls[0]}')
+                                 f'{self.describe}')
                     return None, None
 
                 error_tries += 1
@@ -225,7 +230,7 @@ class AbstractMedium(ABC):
                 if error_tries >= 1:
                     logger.error(f'Medium dropped due to Telegram internal server error '
                                  f'({chat_id}, {e.message if type(e) is ServerError else type(e).__name__}): '
-                                 f'{self.info}, {self.original_urls[0]}')
+                                 f'{self.describe}')
                     return None, None
 
                 error_tries += 1
@@ -277,34 +282,54 @@ class Medium(AbstractMedium):
         return Text([Text(f'{self.type} ('), Code(url), Text(')')])
 
     async def validate(self, flush: bool = False, reason: Union[Exception, str] = None) -> bool:
-        if self.valid is not None and not flush:  # already validated
-            return self.valid
-
-        if self.drop_silently:
-            return False
+        def flushed_log():
+            logger.debug(f'Medium chosen URL ({self.describe}, formerly chosen: {formerly_chosen_url}) flushed'
+                         + (f': {type(reason).__name__} ({reason})'
+                            if isinstance(reason, Exception)
+                            else (f': {reason}' if reason else '')))
 
         async with self.validating_lock:
+            if self.valid is not None and not flush:  # already validated
+                return self.valid
+
+            if self.drop_silently:
+                return False
+
+            self.valid = False
+            formerly_chosen_url = self.chosen_url
+
+            invalid_reasons = []
+            if not self.urls:
+                invalid_reasons.append('no urls')
+
             while self.urls:
                 url = self.urls.pop(0)
                 if not isAbsoluteHttpLink(url):  # bypass non-http links
+                    invalid_reasons.append('non-http link')
                     continue
                 if (
                         # let Telegram DC to determine the validity of media
                         env.LAZY_MEDIA_VALIDATION
                         # images from images.weserv.nl are considered always valid
                         # but if the dimension of the image has not been extracted yet, let it continue
-                        or (url.startswith(env.IMAGES_WESERV_NL) and min(self.max_width, self.max_height) != -1)
+                        or (env.TRAFFIC_SAVING
+                            and url.startswith(env.IMAGES_WESERV_NL)
+                            and min(self.max_width, self.max_height) != -1)
                 ):
                     self.valid = True
                     self.chosen_url = url
                     self._server_change_count = 0
+                    if flush:
+                        flushed_log()
                     return True
                 medium_info = await web.get_medium_info(url)
                 if medium_info is None:
                     if url.startswith(env.IMAGES_WESERV_NL) or url.startswith(env.IMG_RELAY_SERVER):
+                        invalid_reasons.append('fetch failed')
                         continue
                     medium_info = await web.get_medium_info(env.IMG_RELAY_SERVER + url)
                     if medium_info is None:
+                        invalid_reasons.append('both original and relayed image fetch failed')
                         continue
                 self.size, self.width, self.height, self.content_type = medium_info
                 if self.type == IMAGE and self.size <= self.maxSize and min(self.width, self.height) == -1 \
@@ -329,9 +354,15 @@ class Medium(AbstractMedium):
                     ):
                         # immediately fall back to 'images.weserv.nl'
                         self.urls = [url for url in self.urls if url.startswith(env.IMAGES_WESERV_NL)]
+                        invalid_reasons.append('force convert WEBP/SVG to PNG')
                         continue
                     # always invalid
-                    if self.width + self.height > 10000 or self.size > self.maxSize:
+                    if self.width + self.height > 10000:
+                        invalid_reasons.append('width + height > 10000')
+                        self.valid = False
+                    # always invalid
+                    elif self.size > self.maxSize:
+                        invalid_reasons.append(f'size > {self.maxSize}')
                         self.valid = False
                     # Telegram accepts 0.05 < w/h < 20. But after downsized, it will be ugly. Narrow the range down
                     elif 0.4 <= self.width / self.height <= 2.5:
@@ -346,11 +377,13 @@ class Medium(AbstractMedium):
                         self.valid = True
                     # let long images fall back to file
                     else:
+                        invalid_reasons.append('long image')
                         self.valid = False
                         self.urls = []  # clear the urls, force fall back to file
                 elif self.size <= self.maxSize:  # valid
                     self.valid = True
                 else:
+                    invalid_reasons.append(f'size > {self.maxSize}')
                     self.valid = False
 
                 # some images cannot be sent as file directly, if so, images.weserv.nl may help
@@ -360,6 +393,8 @@ class Medium(AbstractMedium):
 
                 if self.valid:
                     self.chosen_url = url
+                    if flush:
+                        flushed_log()
                     self._server_change_count = 0
                     if isTelegramCannotFetch(self.chosen_url):
                         await self.change_server()
@@ -369,7 +404,7 @@ class Medium(AbstractMedium):
                     self.urls = [url for url in self.urls if url.startswith(env.IMAGES_WESERV_NL)]
 
             self.valid = False
-            return await self.type_fallback(reason=reason)
+            return await self.type_fallback(reason=reason or ', '.join(invalid_reasons))
 
     async def type_fallback(self, reason: Union[Exception, str] = None) -> bool:
         fallback_urls = self.type_fallback_urls + (list(self.original_urls) if self.typeFallbackAllowSelfUrls else [])
@@ -379,11 +414,11 @@ class Medium(AbstractMedium):
             self.type_fallback_medium = self.typeFallbackTo(fallback_urls)
             if await self.type_fallback_medium.validate():
                 logger.debug(
-                    f"Medium ({self.info}, {self.original_urls[0]}) type fallback to "
+                    f"Medium ({self.describe}) type fallback to "
                     + (
                         f'({self.type_fallback_medium.type})'
                         if self.typeFallbackAllowSelfUrls
-                        else f'({self.type_fallback_medium.info}, {self.type_fallback_medium.original_urls[0]})'
+                        else f'({self.type_fallback_medium.describe})'
                     )
                     + (
                         f': {type(reason).__name__} ({reason})'
@@ -400,7 +435,7 @@ class Medium(AbstractMedium):
                 return True
         self.need_type_fallback = False
         logger.debug(
-            f'Dropped medium {self.original_urls[0]} ({self.info}): '
+            f'Dropped medium ({self.describe}): '
             + (
                 f'{type(reason).__name__} ({reason})'
                 if isinstance(reason, Exception)
@@ -417,7 +452,7 @@ class Medium(AbstractMedium):
         formerly_valid = self.valid
         if formerly_valid is False:
             return False
-        await self.validate(flush=True)
+        await self.validate(flush=True, reason=reason)
         return (self.valid != formerly_valid
                 or (self.valid and urls_len != len(self.urls))
                 or self.need_type_fallback)
@@ -464,6 +499,15 @@ class Medium(AbstractMedium):
                 + (f'{self.width}x{self.height}'
                    if self.width not in {-1, None} and self.height not in {-1, None}
                    else '')
+        ).rstrip(', ')
+
+    @property
+    def describe(self) -> str:
+        return (
+                f'{self.info}, '
+                + (f'{len(self.original_urls)}URLs, ' if len(self.original_urls) > 1 else '')
+                + f'{self.original_urls[0]}, '
+                + (f'chosen: {self.chosen_url}' if self.chosen_url and self.chosen_url != self.original_urls[0] else '')
         ).rstrip(', ')
 
 
@@ -628,7 +672,7 @@ class UploadedImage(AbstractMedium):
         if self.valid:
             self.valid = False
             logger.debug(
-                f'Dropped uploaded medium ({self.info})'
+                f'Dropped uploaded medium ({self.describe})'
                 + (
                     f': {type(reason).__name__} ({reason})'
                     if isinstance(reason, Exception)
@@ -668,13 +712,17 @@ class UploadedImage(AbstractMedium):
                     self.file.close()
                 self.valid = True
             except (BadRequestError, ValueError) as e:
-                logger.debug(f'Failed to upload file ({self.info})', exc_info=e)
+                logger.debug(f'Failed to upload file ({self.describe})', exc_info=e)
                 self.valid = False
         return self.valid
 
     @property
     def info(self) -> str:
         return f'{len(self.file) / 1024 / 1024:.2f}MB' if self.file else 'Pending'
+
+    @property
+    def describe(self) -> str:
+        return self.info
 
 
 class Media:
