@@ -14,11 +14,18 @@
 - [x] 支持正则表达式匹配语法
 - [x] 支持多频道订阅 & 多关键字订阅
 - [x] 支持订阅群组消息
+- [x] 支持私有频道ID/邀请链接的消息订阅 
+
+  1. https://t.me/+B8yv7lgd9FI0Y2M1  
+  2. https://t.me/joinchat/B8yv7lgd9FI0Y2M1 
+  
 
 👉 Todo:
 
-- [x] 支持私有频道的消息订阅
-- [ ] Bot 加入频道 / 群组推送消息 [目前没研究，感觉很少有人需要]
+- [ ] 私有群组订阅和提醒
+- [ ] 私有频道消息提醒完整内容预览
+- [ ] 多账号支持
+- [ ] 扫描退出无用频道/群组
 
 # DEMO
 
@@ -98,6 +105,12 @@ e.g.
 
  - 订阅群组消息，机器人没任何反应
  https://github.com/Hootrix/keyword_alert_bot/issues/20
+
+ - ModuleNotFoundError: No module named 'asyncstdlib', No module named '...'
+
+```
+$ pipenv  install
+```
 
 ## BOT HELP
 

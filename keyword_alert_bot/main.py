@@ -7,6 +7,8 @@ import diskcache
 import time
 from urllib.parse import urlparse
 from telethon.tl.functions.channels import JoinChannelRequest
+from telethon.tl.functions.messages import ImportChatInviteRequest
+from telethon.tl.functions.messages import CheckChatInviteRequest
 from telethon.tl.functions.channels import DeleteHistoryRequest
 from telethon.tl.functions.channels import LeaveChannelRequest, DeleteChannelRequest
 from logger import logger
@@ -14,7 +16,8 @@ from config import config,_current_path as current_path
 from telethon import utils as telethon_utils
 from telethon.tl.types import PeerChannel
 from telethon.extensions import markdown,html
-
+from asyncstdlib.functools import lru_cache as async_lru_cache
+import asyncio
 
 # 配置访问tg服务器的代理
 proxy = None
@@ -49,6 +52,90 @@ def js_to_py_re(rx):
 def is_regex_str(string):
   return regex.search(r'^/.*/[a-zA-Z]*?$',string)
 
+@async_lru_cache(maxsize=256)
+async def client_get_entity(entity,_):
+  '''
+  读取频道信息
+  client.get_entity 内存缓存替代方法
+  
+  尽量避免get_entity出现频繁请求报错 
+  A wait of 19964 seconds is required (caused by ResolveUsernameRequest)
+
+  Args:
+      entity (_type_): 同get_entity()参数
+      _ (_type_): lru缓存标记值
+  
+  Example:
+    缓存 1天
+    await client_get_entity(real_id, time.time() // 86400 )
+
+    缓存 10秒
+    await client_get_entity(real_id, time.time() // 10 )
+
+  Returns:
+      Entity: 
+  '''
+  return await client.get_entity(entity)
+
+
+
+async def cache_set(*args):
+  '''
+  缓存写入 异步方式
+
+  wiki：https://github.com/grantjenks/python-diskcache/commit/dfad0aa27362354901d90457e465b8b246570c3e
+
+  Returns:
+      _type_: _description_
+  '''
+  loop = asyncio.get_running_loop()
+  future = loop.run_in_executor(None, cache.set, *args)
+  result = await future
+  return result
+
+async def cache_get(*args):
+  loop = asyncio.get_running_loop()
+  future = loop.run_in_executor(None, cache.get, *args)
+  result = await future
+  return result
+  
+async def resolve_invit_hash(invit_hash,expired_secends = 60 * 5):
+  '''
+  解析邀请链接  https://t.me/+G-w4Ovfzp9U4YTFl
+  默认缓存5min
+
+  Args:
+      invite_hash (str): e.g. G-w4Ovfzp9U4YTFl
+      expired_secends (int): None: not cache , 60:  1min
+
+  Returns:
+      Tuple | None: (marked_id,chat_title)
+  '''
+  if not invit_hash: return None
+  marked_id = ''
+  chat_title = ''
+
+  cache_key = f'01211resolve_invit_hash{invit_hash}'
+  find = await cache_get(cache_key)
+  if find: 
+    logger.info(f'resolve_invit_hash HIT CACHE: {invit_hash}')
+    return find
+    
+  logger.info(f'resolve_invit_hash MISS: {invit_hash}')
+  chatinvite = await client(CheckChatInviteRequest(invit_hash))
+  if chatinvite and hasattr(chatinvite,'chat'):# 已加入
+    # chatinvite.chat.id # 1695903641
+    # chatinvite.chat.title # '测试'
+
+    marked_id  = telethon_utils.get_peer_id(PeerChannel(chatinvite.chat.id)) # 转换为marked_id 
+    chat_title = chatinvite.chat.title
+    channel_entity = chatinvite.chat
+    rel = (marked_id,chat_title,channel_entity)
+    await cache_set(cache_key,rel,expired_secends)
+    # cache.set(cache_key,rel,expired_secends)
+    return rel
+  return None
+
 # client相关操作 目的：读取消息
 @client.on(events.MessageEdited)
 @client.on(events.NewMessage())
@@ -57,7 +144,11 @@ async def on_greeting(event):
     # telethon.events.newmessage.NewMessage.Event
     # telethon.events.messageedited.MessageEdited.Event
     if not event.chat:
-      logger.error(f'event.chat empty. event.chat: { event.chat }')
+      logger.error(f'event.chat empty. event: { event }')
+      raise events.StopPropagation
+    
+    if not hasattr(event.chat,'username'):
+      logger.error(f'event.chat not found username:{event.chat}')
       raise events.StopPropagation
 
     if event.chat.username == account['bot_name']: # 不监听当前机器人消息
@@ -76,7 +167,7 @@ async def on_greeting(event):
       # 打印消息
       _title = ''
       if not hasattr(event.chat,'title'):
-        logger.warn('event.chat not found title:',event.chat)
+        logger.warning(f'event.chat not found title:{event.chat}')
       else:
         _title = f'event.chat.title:{event.chat.title},'
       logger.debug(f'event.chat.username: {event.chat.username},event.chat.id:{event.chat.id},{_title} event.message.id:{event.message.id},text:{text}')
@@ -119,12 +210,12 @@ where (l.channel_name = ? or l.chat_id = ?)  and l.status = 0  order by l.create
 
             # 优先返回可预览url
             channel_url = f'https://t.me/{event.chat.username}/' if event.chat.username else get_channel_url(event.chat.username,event.chat_id)
-            channel_url= f'{channel_url}{message.id}'
+            channel_msg_url= f'{channel_url}{message.id}'
             send_cache_key = f'_LAST_{l_id}_{message.id}_send'
             if isinstance(event,events.MessageEdited.Event):# 编辑事件
               # 24小时内新建2秒后的编辑不提醒
               if cache.get(send_cache_key) and (event.message.edit_date - event.message.date) > datetime.timedelta(seconds=2): 
-                logger.error(f'{channel_url} repeat send. deny!')
+                logger.error(f'{channel_msg_url} repeat send. deny!')
                 continue
             if not l_chat_id:# 未记录频道id
               logger.info(f'update user_subscribe_list.chat_id:{event.chat_id}  where id = {l_id} ')
@@ -145,7 +236,7 @@ where (l.channel_name = ? or l.chat_id = ?)  and l.status = 0  order by l.create
               if regex_match_str:# 默认 findall()结果
                 # # {chat_title} \n\n
                 channel_title = f"\n\nCHANNEL: {chat_title}" if not event.chat.username else ""
-                message_str = f'[#FOUND]({channel_url}) **{regex_match_str}**{channel_title}'
+                message_str = f'[#FOUND]({channel_msg_url}) **{regex_match_str}**{channel_title}'
                 if cache.add(CACHE_KEY_UNIQUE_SEND,1,expire=5):
                   logger.info(f'REGEX: receiver chat_id:{receiver}, l_id:{l_id}, message_str:{message_str}')
                   if isinstance(event,events.NewMessage.Event):# 新建事件
@@ -153,7 +244,7 @@ where (l.channel_name = ? or l.chat_id = ?)  and l.status = 0  order by l.create
                   await bot.send_message(receiver, message_str,link_preview = True,parse_mode = 'markdown')
                 else:
                   # 已发送该消息
-                  logger.debug(f'REGEX send repeat. rule_name:{config["msg_unique_rule"]}  {CACHE_KEY_UNIQUE_SEND}:{channel_url}')
+                  logger.debug(f'REGEX send repeat. rule_name:{config["msg_unique_rule"]}  {CACHE_KEY_UNIQUE_SEND}:{channel_msg_url}')
                   continue
 
               else:
@@ -162,7 +253,7 @@ where (l.channel_name = ? or l.chat_id = ?)  and l.status = 0  order by l.create
               if keywords in text:
                 # # {chat_title} \n\n
                 channel_title = f"\n\nCHANNEL: {chat_title}" if not event.chat.username else ""
-                message_str = f'[#FOUND]({channel_url}) **{keywords}**{channel_title}'
+                message_str = f'[#FOUND]({channel_msg_url}) **{keywords}**{channel_title}'
                 if cache.add(CACHE_KEY_UNIQUE_SEND,1,expire=5):
                   logger.info(f'TEXT: receiver chat_id:{receiver}, l_id:{l_id}, message_str:{message_str}')
                   if isinstance(event,events.NewMessage.Event):# 新建事件
@@ -170,7 +261,7 @@ where (l.channel_name = ? or l.chat_id = ?)  and l.status = 0  order by l.create
                   await bot.send_message(receiver, message_str,link_preview = True,parse_mode = 'markdown')
                 else:
                   # 已发送该消息
-                  logger.debug(f'TEXT send repeat. rule_name:{config["msg_unique_rule"]}  {CACHE_KEY_UNIQUE_SEND}:{channel_url}')
+                  logger.debug(f'TEXT send repeat. rule_name:{config["msg_unique_rule"]}  {CACHE_KEY_UNIQUE_SEND}:{channel_msg_url}')
                   continue
           except errors.rpcerrorlist.UserIsBlockedError  as _e:
             # User is blocked (caused by SendMessageRequest)  用户已手动停止bot
@@ -208,6 +299,9 @@ def parse_url(url):
   Returns:
       [dict]: [按照个人认为的字段区域名称]  <scheme>://<host>/<uri>?<query>#<fragment>
   """
+  if regex.search('^t\.me/',url):
+    url = f'http://{url}'
+
   res = urlparse(url) # <scheme>://<netloc>/<path>;<params>?<query>#<fragment>
   result = {}
   result['scheme'],result['host'],result['uri'],result['_params'],result['query'],result['fragment'] = list(res)
@@ -242,25 +336,33 @@ def get_channel_url(event_chat_username,event_chat__id):
 
 def parse_full_command(command, keywords, channels):
   """
-处理多字段的命令参数  拼接合并返回
-  Args:
-      command ([type]): [命令 如 subscribe  unsubscribe]
-      keywords ([type]): [description]
-      channels ([type]): [description]
+  处理多字段的命令参数  拼接合并返回
+    Args:
+        command ([type]): [命令 如 subscribe  unsubscribe]
+        keywords ([type]): [description]
+        channels ([type]): [description]
 
-  Returns:
-      [type]: [description]
+    Returns:
+        [type]: [description]
   """
   keywords_list = keywords.split(',')
   channels_list = channels.split(',')
-  res = []
+  res = {}
   for keyword in keywords_list:
     keyword = keyword.strip()
     for channel in channels_list:
       channel = channel.strip()
-      channel = parse_url(channel)['uri'].replace('/','') # 支持传入url  类似 https://t.me/xiaobaiup
-      res.append((keyword,channel))
-  return res
+      uri = parse_url(channel)['uri']
+      channel = uri.strip('/')
+      channel = regex.sub('^joinchat/(.+)',r'+\1',channel)
+      find_channel = regex.search(r'^c/(\d+)|^(\+.+)',channel)
+      if find_channel:
+        for i in find_channel.groups():
+          if i:
+            channel = i
+            break
+      res[f'{channel}{keyword}'] = (keyword,channel)# 去重
+  return list(res.values())
 
 async def join_channel_insert_subscribe(user_id,keyword_channel_list):
   """
@@ -277,22 +379,50 @@ async def join_channel_insert_subscribe(user_id,keyword_channel_list):
     username = ''
     chat_id = ''
     try:
+      is_chat_invite_link = False
       if c.lstrip('-').isdigit():# 整数
         real_id, peer_type = telethon_utils.resolve_id(int(c))
-        channel_entity = await client.get_entity(real_id)
+        channel_entity = None
+        # 不请求channel_entity
+        # channel_entity = await client_get_entity(real_id, time.time() // 86400 )
         chat_id = telethon_utils.get_peer_id(PeerChannel(real_id)) # 转换为marked_id 
-        # channel_entity.title
       else:# 传入普通名称
-        channel_entity = await client.get_entity(c) # get_entity频繁请求会有报错 A wait of 19964 seconds is required (caused by ResolveUsernameRequest)
-        chat_id = telethon_utils.get_peer_id(PeerChannel(channel_entity.id)) # 转换为marked_id 
+        if regex.search('^\+',c):# 邀请链接
+          is_chat_invite_link = True
+          c = c.lstrip('+')
+          channel_entity = None
+          chat_id = ''
+          chatinvite =  await resolve_invit_hash(c)
+          if chatinvite:
+            chat_id,chat_title,channel_entity = chatinvite
+        else:
+          channel_entity = await client_get_entity(c, time.time() // 86400) 
+          chat_id = telethon_utils.get_peer_id(PeerChannel(channel_entity.id)) # 转换为marked_id 
       
-      if channel_entity.username: username = channel_entity.username
+      if channel_entity and hasattr(channel_entity,'username'): username = channel_entity.username
       
       if channel_entity and not channel_entity.left: # 已加入该频道
+        logger.warning(f'user_id：{user_id}触发检查  已加入该私有频道:{chat_id}  invite_hash:{c}')
         res.append((k,username,chat_id))
       else:
-        await client(JoinChannelRequest(channel_entity))
-        res.append((k,username,chat_id))
+        if is_chat_invite_link:
+          # 通过邀请链接加入私有频道
+          logger.info(f'user_id：{user_id}通过邀请链接加入私有频道{c}')
+          await client(ImportChatInviteRequest(c))
+          chatinvite =  await resolve_invit_hash(c)
+          if chatinvite:
+            chat_id,chat_title,channel_entity = chatinvite
+            res.append((k,username,chat_id))
+        else:
+          await client(JoinChannelRequest(channel_entity or chat_id))
+          res.append((k,username,chat_id))
+        
+    except errors.InviteHashExpiredError as _e:
+      logger.error(f'{c} InviteHashExpiredError ERROR:{_e}')
+      return f'无法使用该频道邀请链接：{c}\nLink has expired.'
+    except errors.UserAlreadyParticipantError as _e:# 重复加入私有频道
+      logger.warning(f'{c} UserAlreadyParticipantError ERROR:{_e}')
+      return f'无法使用该频道邀请链接：UserAlreadyParticipantError'
     except Exception as _e: # 不存在的频道
       logger.error(f'{c} JoinChannelRequest ERROR:{_e}')
       
@@ -425,9 +555,16 @@ async def subscribe(event):
       for key,channel,_chat_id in result:
         if _chat_id:
           _chat_id, peer_type = telethon_utils.resolve_id(int(_chat_id))
-        msg += 'keyword:{}  channel:{}\n'.format(key,(channel if channel else f't.me/c/{_chat_id}'))
+
+        if not channel:
+          channel = f'<a href="t.me/c/{_chat_id}/-1">{_chat_id}</a>'
+        msg += f'keyword:{key}  channel:{channel}\n'
       if msg:
-        await event.respond('success subscribe:\n'+msg,parse_mode = None)
+        msg = 'success subscribe:\n'+msg 
+        text, entities = html.parse(msg)# 解析超大文本 分批次发送 避免输出报错
+        for text, entities in telethon_utils.split_text(text, entities):
+          await event.respond(text,formatting_entities=entities) 
+        #await event.respond('success subscribe:\n'+msg,parse_mode = None)
   raise events.StopPropagation
 
 
@@ -699,9 +836,16 @@ async def common(event):
         for key,channel,_chat_id in result:
           if _chat_id:
             _chat_id, peer_type = telethon_utils.resolve_id(int(_chat_id))
-          msg += 'keyword:{}  channel:{}\n'.format(key,(channel if channel else f't.me/c/{_chat_id}'))
+          
+          if not channel:
+            channel = f'<a href="t.me/c/{_chat_id}/-1">{_chat_id}</a>'
+          msg += f'keyword:{key}  channel:{channel}\n'
         if msg:
-          await event.respond('success subscribe:\n'+msg,parse_mode = None)
+          # await event.respond('success subscribe:\n'+msg,parse_mode = None)
+          msg = 'success subscribe:\n'+msg 
+          text, entities = html.parse(msg)# 解析超大文本 分批次发送 避免输出报错
+          for text, entities in telethon_utils.split_text(text, entities):
+            await event.respond(text,formatting_entities=entities) 
 
       cache.delete('status_{}'.format(chat_id))
       raise events.StopPropagation
