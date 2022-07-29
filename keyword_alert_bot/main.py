@@ -155,6 +155,12 @@ async def on_greeting(event):
       logger.debug(f'不监听当前机器人消息, event.chat.username: { event.chat.username }')
       raise events.StopPropagation
 
+    # 是否拒绝来自其它机器人发在群里的消息
+    if 'block_bot_msg' in config and config['block_bot_msg']:
+      if hasattr(event.message.sender,'bot') and event.message.sender.bot :
+        logger.debug(f'不监听所有机器人消息, event.chat.username: { event.chat.username }')
+        raise events.StopPropagation
+        
     # if not event.is_group:# channel 类型
     if True:# 所有消息类型，支持群组
       message = event.message
@@ -510,6 +516,15 @@ async def start(event):
   """Send a message when the command /start is issued."""
   # insert chat_id
   chat_id = event.message.chat.id
+
+  # 非公共服务
+  if 'private_service' in config and config['private_service'] :
+    # 只服务指定的用户
+    authorized_users_list = config['authorized_users']
+    if chat_id not in authorized_users_list :
+        await event.respond('Opps! I\'m a private bot. 对不起, 这是一个私人专用的Bot')
+        raise events.StopPropagation
+
   find = utils.db.user.get_or_none(chat_id=chat_id)
   if not find:
     insert_res = utils.db.user.create(**{
