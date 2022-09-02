@@ -5,8 +5,8 @@ from typing import Callable
 import sys
 import functools
 
-import telethon.helpers
 from aiohttp import ClientResponse
+from bs4 import BeautifulSoup
 from cachetools.keys import hashkey
 
 _version_info = sys.version_info
@@ -93,6 +93,26 @@ def ssl_create_default_context():
     return context
 
 
+def parsing_utils_html_validator_preprocess(html: str) -> str:
+    contains_sr_only = 'sr-only' in html
+    if (
+            _version_info[1] < 8  # minify-html >0.6.10 requires Python 3.8+
+            or
+            contains_sr_only  # clear sr-only first, otherwise minify-html cannot strip spaces around them
+    ):
+        # fix malformed HTML first, since minify-html is not so robust
+        # (resulting in RecursionError or unexpected format while html_parser parsing the minified HTML)
+        # https://github.com/wilsonzlin/minify-html/issues/86
+        soup = BeautifulSoup(html, 'lxml')
+        if contains_sr_only:
+            for tag in soup.find_all(attrs={'class': 'sr-only'}):
+                with suppress(ValueError, AttributeError):
+                    tag.decompose()
+        html = str(soup)
+        soup.decompose()
+    return html
+
+
 def cached_async(cache, key=hashkey):
     """
     https://github.com/tkem/cachetools/commit/3f073633ed4f36f05b57838a3e5655e14d3e3524
@@ -130,45 +150,3 @@ def bozo_exception_removal_wrapper(func: Callable, *args, **kwargs):
         del ret['bozo_exception']
 
     return ret
-
-
-def apply_monkey_patches():
-    def _telethon_helpers_strip_text(text, entities):
-        """
-        https://github.com/LonamiWebs/Telethon/blob/046e2cb605e4def4d38c2f0d665ea49babb90093/telethon/helpers.py#L65
-        """
-        if not entities:
-            return text.strip()
-
-        len_ori = len(text)
-        text = text.lstrip()
-        left_offset = len_ori - len(text)
-        text = text.rstrip()
-        len_final = len(text)
-
-        for i in reversed(range(len(entities))):
-            e = entities[i]
-            if e.length == 0:
-                del entities[i]
-                continue
-
-            if e.offset + e.length > left_offset:
-                if e.offset >= left_offset:
-                    e.offset -= left_offset
-                else:
-                    e.length = e.offset + e.length - left_offset
-                    e.offset = 0
-            else:
-                del entities[i]
-                continue
-
-            if e.offset + e.length <= len_final:
-                continue
-            if e.offset >= len_final:
-                del entities[i]
-            else:
-                e.length = len_final - e.offset
-
-        return text
-
-    telethon.helpers.strip_text = _telethon_helpers_strip_text
