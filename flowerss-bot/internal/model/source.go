@@ -3,18 +3,13 @@ package model
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
-	"net/http"
 	"sort"
-	"strings"
-	"unicode"
-
-	"github.com/indes/flowerss-bot/internal/config"
-	"github.com/indes/flowerss-bot/internal/util"
 
 	"github.com/SlyMarbo/rss"
 	"github.com/jinzhu/gorm"
-	"go.uber.org/zap"
+
+	"github.com/indes/flowerss-bot/internal/config"
+	"github.com/indes/flowerss-bot/internal/fetch"
 )
 
 type Source struct {
@@ -37,48 +32,6 @@ func (s *Source) appendContents(items []*rss.Item) error {
 	return nil
 }
 
-func GetSourceByUrl(url string) (*Source, error) {
-	var source Source
-	if err := db.Where("link=?", url).Find(&source).Error; err != nil {
-		return nil, err
-	}
-	return &source, nil
-}
-
-func fetchFunc(url string) (resp *http.Response, err error) {
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		zap.S().Fatal(err)
-	}
-
-	if config.UserAgent != "" {
-		req.Header.Set("User-Agent", config.UserAgent)
-	} else {
-		req.Header.Set("User-Agent", "flowerss/2.0")
-	}
-
-	resp, err = util.HttpClient.Do(req)
-
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var data []byte
-	if data, err = ioutil.ReadAll(resp.Body); err != nil {
-
-		return nil, err
-	}
-
-	resp.Body = ioutil.NopCloser(strings.NewReader(strings.Map(func(r rune) rune {
-		if unicode.IsPrint(r) {
-			return r
-		}
-		return -1
-	}, string(data))))
-	return
-}
-
 func FindOrNewSourceByUrl(url string) (*Source, error) {
 	var source Source
 
@@ -87,7 +40,7 @@ func FindOrNewSourceByUrl(url string) (*Source, error) {
 			source.Link = url
 
 			// parsing task
-			feed, err := rss.FetchByFunc(fetchFunc, url)
+			feed, err := rss.FetchByFunc(fetch.FetchFunc(httpClient), url)
 
 			if err != nil {
 				return nil, fmt.Errorf("Feed 抓取错误 %v", err)
@@ -122,9 +75,11 @@ func GetSubscribedNormalSources() []*Source {
 			subscribedSources = append(subscribedSources, source)
 		}
 	}
-	sort.SliceStable(subscribedSources, func(i, j int) bool {
-		return subscribedSources[i].ID < subscribedSources[j].ID
-	})
+	sort.SliceStable(
+		subscribedSources, func(i, j int) bool {
+			return subscribedSources[i].ID < subscribedSources[j].ID
+		},
+	)
 	return subscribedSources
 }
 
@@ -146,79 +101,6 @@ func (s *Source) NeedUpdate() bool {
 		db.Save(&sub)
 		return false
 	}
-}
-
-// GetNewContents 获取rss新内容
-func (s *Source) GetNewContents() ([]*Content, error) {
-	zap.S().Debugw("fetch source updates",
-		"source", s,
-	)
-
-	var newContents []*Content
-	feed, err := rss.FetchByFunc(fetchFunc, s.Link)
-	if err != nil {
-		zap.S().Errorw("unable to fetch update", "error", err, "source", s)
-		s.AddErrorCount()
-		return nil, err
-	}
-
-	s.EraseErrorCount()
-
-	items := feed.Items
-	for _, item := range items {
-		c, isBroad, _ := GenContentAndCheckByFeedItem(s, item)
-		if !isBroad {
-			newContents = append(newContents, c)
-		}
-	}
-
-	return newContents, nil
-}
-
-func GetSourcesByUserID(userID int64) ([]Source, error) {
-	var sources []Source
-	subs, err := GetSubsByUserID(userID)
-
-	if err != nil {
-		return nil, err
-	}
-
-	for _, sub := range subs {
-		var source Source
-		db.Where("id=?", sub.SourceID).First(&source)
-		if source.ID == sub.SourceID {
-			sources = append(sources, source)
-		}
-	}
-
-	sort.SliceStable(sources, func(i, j int) bool {
-		return sources[i].ID < sources[j].ID
-	})
-
-	return sources, nil
-}
-
-func GetErrorSourcesByUserID(userID int64) ([]Source, error) {
-	var sources []Source
-	subs, err := GetSubsByUserID(userID)
-
-	if err != nil {
-		return nil, err
-	}
-
-	for _, sub := range subs {
-		var source Source
-		db.Where("id=?", sub.SourceID).First(&source)
-		if source.ID == sub.SourceID && source.ErrorCount >= config.ErrorThreshold {
-			sources = append(sources, source)
-		}
-	}
-
-	sort.SliceStable(sources, func(i, j int) bool {
-		return sources[i].ID < sources[j].ID
-	})
-
-	return sources, nil
 }
 
 func ActiveSourcesByUserID(userID int64) error {
@@ -281,19 +163,4 @@ func GetSourceById(id uint) (*Source, error) {
 	}
 
 	return &source, nil
-}
-
-func (s *Source) GetSubscribeNum() int {
-	var subs []Subscribe
-	db.Where("source_id=?", s.ID).Find(&subs)
-	return len(subs)
-}
-
-func (s *Source) DeleteContents() {
-	DeleteContentsBySourceID(s.ID)
-}
-
-func (s *Source) DeleteDueNoSubscriber() {
-	s.DeleteContents()
-	db.Delete(&s)
 }

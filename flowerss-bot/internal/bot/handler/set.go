@@ -2,25 +2,32 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
 	"text/template"
 
+	"github.com/spf13/cast"
 	tb "gopkg.in/telebot.v3"
 
 	"github.com/indes/flowerss-bot/internal/bot/chat"
 	"github.com/indes/flowerss-bot/internal/bot/session"
 	"github.com/indes/flowerss-bot/internal/config"
+	"github.com/indes/flowerss-bot/internal/core"
 	"github.com/indes/flowerss-bot/internal/model"
 )
 
 type Set struct {
-	bot *tb.Bot
+	bot  *tb.Bot
+	core *core.Core
 }
 
-func NewSet(bot *tb.Bot) *Set {
-	return &Set{bot: bot}
+func NewSet(bot *tb.Bot, core *core.Core) *Set {
+	return &Set{
+		bot:  bot,
+		core: core,
+	}
 }
 
 func (s *Set) Command() string {
@@ -38,7 +45,7 @@ func (s *Set) Handle(ctx tb.Context) error {
 		ownerID = mentionChat.ID
 	}
 
-	sources, err := model.GetSourcesByUserID(ownerID)
+	sources, err := s.core.GetUserSubscribedSources(context.Background(), ownerID)
 	if err != nil {
 		return ctx.Reply("获取订阅失败")
 	}
@@ -84,7 +91,7 @@ const (
 	SetFeedItemButtonUnique = "set_feed_item_btn"
 	feedSettingTmpl         = `
 订阅<b>设置</b>
-[id] {{ .sub.ID }}
+[id] {{ .source.ID }}
 [标题] {{ .source.Title }}
 [Link] {{.source.Link }}
 [抓取更新] {{if ge .source.ErrorCount .Count }}暂停{{else if lt .source.ErrorCount .Count }}抓取中{{end}}
@@ -96,11 +103,12 @@ const (
 )
 
 type SetFeedItemButton struct {
-	bot *tb.Bot
+	bot  *tb.Bot
+	core *core.Core
 }
 
-func NewSetFeedItemButton(bot *tb.Bot) *SetFeedItemButton {
-	return &SetFeedItemButton{bot: bot}
+func NewSetFeedItemButton(bot *tb.Bot, core *core.Core) *SetFeedItemButton {
+	return &SetFeedItemButton{bot: bot, core: core}
 }
 
 func (r *SetFeedItemButton) CallbackUnique() string {
@@ -129,13 +137,13 @@ func (r *SetFeedItemButton) Handle(ctx tb.Context) error {
 		}
 	}
 
-	sourceID, _ := strconv.Atoi(data[1])
-	source, err := model.GetSourceById(uint(sourceID))
+	sourceID := cast.ToUint(data[1])
+	source, err := r.core.GetSource(context.Background(), sourceID)
 	if err != nil {
 		return ctx.Edit("找不到该订阅源")
 	}
 
-	sub, err := model.GetSubscribeByUserIDAndSourceID(subscriberID, source.ID)
+	sub, err := r.core.GetSubscription(context.Background(), subscriberID, source.ID)
 	if err != nil {
 		return ctx.Edit("用户未订阅该rss")
 	}

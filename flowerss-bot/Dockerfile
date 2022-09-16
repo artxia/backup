@@ -1,4 +1,4 @@
-FROM golang:1.13-alpine as builder
+FROM golang:1.18.6-alpine as builder
 #ENV CGO_ENABLED=0
 COPY . /flowerss
 RUN apk add git make gcc libc-dev && \

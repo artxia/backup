@@ -2,7 +2,6 @@ package model
 
 import (
 	"errors"
-	"strings"
 
 	"github.com/indes/flowerss-bot/internal/config"
 )
@@ -23,53 +22,6 @@ type Subscribe struct {
 	EditTime
 }
 
-type SubWithSource struct {
-	Sub *Subscribe
-	Src *Source
-}
-
-func RegistFeed(userID int64, sourceID uint) error {
-	var subscribe Subscribe
-
-	if err := db.Where("user_id=? and source_id=?", userID, sourceID).Find(&subscribe).Error; err != nil {
-		if err.Error() == "record not found" {
-			subscribe.UserID = userID
-			subscribe.SourceID = sourceID
-			subscribe.EnableNotification = 1
-			subscribe.EnableTelegraph = 1
-			subscribe.Interval = config.UpdateInterval
-			subscribe.WaitTime = config.UpdateInterval
-			if db.Create(&subscribe).Error == nil {
-				return nil
-			}
-		}
-		return err
-	}
-	return nil
-}
-
-func GetSubscribeByUserIDAndSourceID(userID int64, sourceID uint) (*Subscribe, error) {
-	var sub Subscribe
-	db.Where("user_id=? and source_id=?", userID, sourceID).First(&sub)
-	if sub.UserID != int64(userID) {
-		return nil, errors.New("未订阅该RSS源")
-	}
-	return &sub, nil
-}
-
-func GetSubscribeByUserIDAndURL(userID int, url string) (*Subscribe, error) {
-	var sub Subscribe
-	source, err := GetSourceByUrl(url)
-	if err != nil {
-		return nil, err
-	}
-	db.Where("user_id=? and source_id=?", userID, source.ID).First(&sub)
-	if sub.UserID != int64(userID) {
-		return nil, errors.New("未订阅该RSS源")
-	}
-	return &sub, nil
-}
-
 func GetSubscriberBySource(s *Source) []*Subscribe {
 	if s == nil {
 		return []*Subscribe{}
@@ -81,82 +33,10 @@ func GetSubscriberBySource(s *Source) []*Subscribe {
 	return subs
 }
 
-func UnsubByUserIDAndSource(userID int64, source *Source) error {
-	if source == nil {
-		return errors.New("nil pointer")
-	}
-
-	var sub Subscribe
-	db.Where("user_id=? and source_id=?", userID, source.ID).First(&sub)
-	if sub.UserID != userID {
-		return errors.New("未订阅该RSS源")
-	}
-	db.Delete(&sub)
-	if source.GetSubscribeNum() < 1 {
-		source.DeleteDueNoSubscriber()
-	}
-	return nil
-}
-
-func UnsubByUserIDAndSubID(userID int64, subID uint) error {
-	var sub Subscribe
-	db.Where("id=?", subID).First(&sub)
-
-	if sub.UserID != userID {
-		return errors.New("未找到该条订阅")
-	}
-	db.Delete(&sub)
-
-	source, _ := GetSourceById(sub.SourceID)
-	if source.GetSubscribeNum() < 1 {
-		source.DeleteDueNoSubscriber()
-	}
-	return nil
-}
-
-func UnsubAllByUserID(userID int64) (success int, fail int, err error) {
-	success = 0
-	fail = 0
-	var subs []Subscribe
-
-	db.Where("user_id=?", userID).Find(&subs)
-
-	for _, sub := range subs {
-		err := sub.Unsub()
-		if err != nil {
-			fail += 1
-		} else {
-			success += 1
-		}
-	}
-	err = nil
-
-	return
-}
-
-func GetSubByUserIDAndURL(userID int64, url string) (*Subscribe, error) {
-	var sub Subscribe
-	source, err := GetSourceByUrl(url)
-	if err != nil {
-		return &sub, err
-	}
-	err = db.Where("user_id=? and source_id=?", userID, source.ID).First(&sub).Error
-	return &sub, err
-}
-
 func GetSubsByUserID(userID int64) ([]Subscribe, error) {
 	var subs []Subscribe
 	db.Where("user_id=?", userID).Order("id").Find(&subs)
 	return subs, nil
-}
-
-func UnsubByUserIDAndSourceURL(userID int64, url string) error {
-	source, err := GetSourceByUrl(url)
-	if err != nil {
-		return err
-	}
-	err = UnsubByUserIDAndSource(userID, source)
-	return err
 }
 
 func GetSubscribeByID(id int) (*Subscribe, error) {
@@ -193,21 +73,6 @@ func (s *Source) ToggleEnabled() error {
 	///TODO a hack for save source changes
 	s.Save()
 
-	return nil
-}
-
-func (s *Subscribe) SetTag(tags []string) error {
-	defer s.Save()
-
-	tagStr := strings.Join(tags, " #")
-
-	s.Tag = "#" + tagStr
-	return nil
-}
-
-func (s *Subscribe) SetInterval(interval int) error {
-	defer s.Save()
-	s.Interval = interval
 	return nil
 }
 
