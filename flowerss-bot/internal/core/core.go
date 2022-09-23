@@ -248,3 +248,70 @@ func (c *Core) SetSubscriptionInterval(ctx context.Context, userID int64, source
 	subscription.Interval = interval
 	return c.subscriptionStorage.UpdateSubscription(ctx, userID, sourceID, subscription)
 }
+
+// EnableSourceUpdate 开启订阅源更新
+func (c *Core) EnableSourceUpdate(ctx context.Context, sourceID uint) error {
+	return c.ClearSourceErrorCount(ctx, sourceID)
+}
+
+// DisableSourceUpdate 关闭订阅源更新
+func (c *Core) DisableSourceUpdate(ctx context.Context, sourceID uint) error {
+	source, err := c.GetSource(ctx, sourceID)
+	if err != nil {
+		return err
+	}
+
+	source.ErrorCount = config.ErrorThreshold + 1
+	return c.sourceStorage.UpsertSource(ctx, sourceID, source)
+}
+
+// ClearSourceErrorCount 清空订阅源错误计数
+func (c *Core) ClearSourceErrorCount(ctx context.Context, sourceID uint) error {
+	source, err := c.GetSource(ctx, sourceID)
+	if err != nil {
+		return err
+	}
+
+	source.ErrorCount = 0
+	return c.sourceStorage.UpsertSource(ctx, sourceID, source)
+}
+
+func (c *Core) ToggleSubscriptionNotice(ctx context.Context, userID int64, sourceID uint) error {
+	subscription, err := c.GetSubscription(ctx, userID, sourceID)
+	if err != nil {
+		return err
+	}
+	if subscription.EnableNotification == 1 {
+		subscription.EnableNotification = 0
+	} else {
+		subscription.EnableNotification = 1
+	}
+	return c.subscriptionStorage.UpsertSubscription(ctx, userID, sourceID, subscription)
+}
+
+func (c *Core) ToggleSourceUpdateStatus(ctx context.Context, sourceID uint) error {
+	source, err := c.GetSource(ctx, sourceID)
+	if err != nil {
+		return err
+	}
+
+	if source.ErrorCount < config.ErrorThreshold {
+		source.ErrorCount = config.ErrorThreshold + 1
+	} else {
+		source.ErrorCount = 0
+	}
+	return c.sourceStorage.UpsertSource(ctx, sourceID, source)
+}
+
+func (c *Core) ToggleSubscriptionTelegraph(ctx context.Context, userID int64, sourceID uint) error {
+	subscription, err := c.GetSubscription(ctx, userID, sourceID)
+	if err != nil {
+		return err
+	}
+	if subscription.EnableTelegraph == 1 {
+		subscription.EnableTelegraph = 0
+	} else {
+		subscription.EnableTelegraph = 1
+	}
+	return c.subscriptionStorage.UpsertSubscription(ctx, userID, sourceID, subscription)
+}

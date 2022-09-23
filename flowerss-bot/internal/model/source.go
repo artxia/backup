@@ -1,7 +1,6 @@
 package model
 
 import (
-	"errors"
 	"fmt"
 	"sort"
 
@@ -103,44 +102,6 @@ func (s *Source) NeedUpdate() bool {
 	}
 }
 
-func ActiveSourcesByUserID(userID int64) error {
-	subs, err := GetSubsByUserID(userID)
-
-	if err != nil {
-		return err
-	}
-
-	for _, sub := range subs {
-		var source Source
-		db.Where("id=?", sub.SourceID).First(&source)
-		if source.ID == sub.SourceID {
-			source.ErrorCount = 0
-			db.Save(&source)
-		}
-	}
-
-	return nil
-}
-
-func PauseSourcesByUserID(userID int64) error {
-	subs, err := GetSubsByUserID(userID)
-
-	if err != nil {
-		return err
-	}
-
-	for _, sub := range subs {
-		var source Source
-		db.Where("id=?", sub.SourceID).First(&source)
-		if source.ID == sub.SourceID {
-			source.ErrorCount = config.ErrorThreshold + 1
-			db.Save(&source)
-		}
-	}
-
-	return nil
-}
-
 func (s *Source) AddErrorCount() {
 	s.ErrorCount++
 	s.Save()
@@ -153,14 +114,4 @@ func (s *Source) EraseErrorCount() {
 
 func (s *Source) Save() {
 	db.Save(&s)
-}
-
-func GetSourceById(id uint) (*Source, error) {
-	var source Source
-
-	if err := db.Where("id=?", id).First(&source); err.Error != nil {
-		return nil, errors.New("未找到 RSS 源")
-	}
-
-	return &source, nil
 }
