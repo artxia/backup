@@ -21,17 +21,32 @@ RUN \
 
 FROM python:3.10-bullseye AS dep-builder
 
+RUN \
+    set -ex && \
+    apt-get update && \
+    apt-get install -yq --no-install-recommends \
+        cmake \
+    && \
+    rm -rf /var/lib/apt/lists/* && \
+    git clone --depth=1 https://github.com/microsoft/mimalloc.git && \
+    mkdir -p /mimalloc/build/lib && \
+    cd /mimalloc/build && \
+    cmake /mimalloc && \
+    make mimalloc -j$((`nproc`+1)) && \
+    ln libmimalloc.so* lib/
+
 ENV PATH="/opt/venv/bin:$PATH"
 
 COPY --from=dep-builder-common /opt/venv /opt/venv
 COPY requirements.txt .
 
-ARG FEEDPARSER_ENHANCED=0
+ARG EXP_DEPS=0
 RUN \
     set -ex && \
-    if [ "$FEEDPARSER_ENHANCED" = 1 ]; then \
-        pip uninstall -y feedparser && \
-        sed -i 's/^feedparser[^#]*#\s*//g' requirements.txt ; \
+    if [ "$EXP_DEPS" = 1 ]; then \
+        REGEX='^([^~=<>]+)[^#]*#\s*(\1@.+)$' ; \
+        pip uninstall -y $(sed -nE "s/$REGEX/\1/p" requirements.txt) && \
+        sed -Ei "s/$REGEX/\2/g" requirements.txt && \
         pip install --no-cache-dir \
             -r requirements.txt \
         ; \
@@ -85,12 +100,14 @@ ENV \
     PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     RAPIDFUZZ_IMPLEMENTATION=cpp \
+    PYTHONMALLOC=malloc \
     LD_PRELOAD=libjemalloc.so.2 \
     MALLOC_CONF=background_thread:true,max_background_threads:1,metadata_thp:auto,dirty_decay_ms:80000,muzzy_decay_ms:80000
     # jemalloc tuning, Ref:
     # https://github.com/home-assistant/core/pull/70899
     # https://github.com/jemalloc/jemalloc/blob/5.2.1/TUNING.md
 
+COPY --from=dep-builder /mimalloc/build/lib /usr/local/lib
 COPY --from=dep-builder /opt/venv /opt/venv
 COPY --from=app-builder /app-minimal /app
 

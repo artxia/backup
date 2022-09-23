@@ -98,7 +98,7 @@ class Post:
         """
         for _ in range(3):
             try:
-                formatted_post, need_media, need_link_preview = \
+                formatted_post_tuple = \
                     await self.post_formatter.get_formatted_post(sub_title=sub_title,
                                                                  tags=tags,
                                                                  send_mode=send_mode,
@@ -109,6 +109,12 @@ class Post:
                                                                  display_title=display_title,
                                                                  style=style,
                                                                  display_media=display_media)
+
+                if formatted_post_tuple is None:
+                    logger.debug(f'Post {self.link} is not sent to user {user_id} due to empty content')
+                    return  # skip
+
+                formatted_post, need_media, need_link_preview = formatted_post_tuple
 
                 message_dispatcher = MessageDispatcher(user_id=user_id,
                                                        html=formatted_post,

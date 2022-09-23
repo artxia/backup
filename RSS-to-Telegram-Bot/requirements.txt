@@ -1,6 +1,6 @@
 # telegram and telegraph
 cryptg==0.3.1
-telethon==1.25.0
+telethon==1.25.0  # telethon@git+https://github.com/LonamiWebs/Telethon.git@v1
 aiographfix==0.2.2
 
 # feed parsing
@@ -9,20 +9,20 @@ listparser[lxml]==0.19
 pillow==9.2.0
 beautifulsoup4==4.11.1
 lxml==4.9.1
-rapidfuzz==2.8.0
-emoji==2.0.0
+rapidfuzz==2.10.0
+emoji==2.1.0
 minify-html==0.6.10; python_version<="3.7"  # 0.6.10 for Python 3.7 (amd64 only)
 minify-html==0.10.0; python_version>="3.8"  # Python 3.8+ (aarch64/amd64 only)
 minify-html-onepass==0.10.0; python_version>="3.8"  # Python 3.8+ (aarch64/amd64 only)
 matplotlib==3.5.3
 
 # db
-asyncpg==0.26.0  # asyncpg@git+https://github.com/Rongronggg9/asyncpg.git@fix/pep-621
+asyncpg==0.26.0
 tortoise-orm[accel]==0.19.2
 aerich==0.6.3
 
 # network
-aiohttp[speedups]==3.8.1
+aiohttp[speedups]==3.8.3
 aiohttp-socks==0.7.1
 aiohttp-retry==2.8.3
 python-socks[asyncio]==2.0.3

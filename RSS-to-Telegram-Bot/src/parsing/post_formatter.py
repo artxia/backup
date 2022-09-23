@@ -95,11 +95,11 @@ class PostFormatter:
         self.__lock = asyncio.Lock()
         self.__post_bucket: dict[
             str,  # option hash
-            tuple[
+            Optional[tuple[
                 str,  # formatted post
                 bool,  # need media
                 bool  # need linkpreview
-            ]
+            ]]
         ] = {}
         self.__param_to_option_cache: dict[
             str,  # param hash
@@ -116,7 +116,7 @@ class PostFormatter:
                                  display_via: int = 0,
                                  display_title: int = 0,
                                  style: int = 0,
-                                 display_media: int = 0) -> tuple[str, bool, bool]:
+                                 display_media: int = 0) -> Optional[tuple[str, bool, bool]]:
         """
         Get formatted post.
 
@@ -306,6 +306,20 @@ class PostFormatter:
 
         if option_hash in self.__post_bucket:
             return self.__post_bucket[option_hash]
+
+        if (
+                (
+                        message_type in {NORMAL_MESSAGE, LINK_MESSAGE}
+                        and display_media == ONLY_MEDIA_NO_CONTENT and not need_media
+                )  # ONLY_MEDIA_NO_CONTENT but no media
+                or
+                (
+                        not self.parsed_html and not need_media
+                        and via_type is NO_VIA and title_type == NO_POST_TITLE and need_author is False
+                )  # no content or media, and metadata is completely disabled by user
+        ):
+            self.__post_bucket[option_hash] = None
+            return None
 
         if message_type == NORMAL_MESSAGE and normal_msg_post:
             self.__post_bucket[option_hash] = normal_msg_post, need_media, need_link_preview
