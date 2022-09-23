@@ -4,4 +4,6 @@ export interface UpstreamOptions {
   port?: number;
   timeout?: number;
   weight?: number;
+  onRequest?: (request: Request, url: string) => Request;
+  onResponse?: (response: Response, url: string) => Response;
 }

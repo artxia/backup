@@ -50,21 +50,29 @@ export const useUpstream: Middleware = async (
   next,
 ) => {
   const { request, upstream } = context;
+
   if (upstream === null) {
     await next();
     return;
   }
+
+  const { onRequest, onResponse } = upstream;
 
   const url = getURL(
     request.url,
     upstream,
   );
 
-  const upstreamRequest = cloneRequest(
-    url,
-    request,
-  );
+  const upstreamRequest = onRequest
+    ? onRequest(cloneRequest(url, request), url)
+    : cloneRequest(url, request);
+
   context.response = await fetch(upstreamRequest);
+
+  if (onResponse) {
+    const newResponse = new Response(context.response.body, context.response);
+    context.response = onResponse(newResponse, url);
+  }
 
   await next();
 };

@@ -200,6 +200,8 @@ reflare.push({
 - `port`: The port of the upstream server (optional, defaults to `80` or `443` based on `protocol`)
 - `timeout`: The maximum wait time on a request to the upstream server (optional, defaults to `10000`)
 - `weight`: The weight of the server that will be accounted for as part of the load balancing decision (optional, defaults to `1`)
+- `onRequest(request: Request, url: string)`: A function that can be called before the request is executed allowing the request object to modified
+- `onResponse(response: Response, url: string)`: A function that can be called after receiving the upstream response, allowing the the response object to be modified
 
 ```ts
 reflare.push({
