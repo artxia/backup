@@ -22,26 +22,28 @@ const filter = (
   routeList: RouteList,
 ): Route | void => {
   const url = new URL(request.url);
+
   for (const route of routeList) {
-    if (
-      route.methods === undefined
-      || route.methods.includes(request.method)
-    ) {
-      const re = RegExp(
-        `^${
-          route.path
+    if (route.methods === undefined || route.methods.includes(request.method)) {
+      const match = (!Array.isArray(route.path) ? [route.path] : route.path).some(path => {
+        const re = RegExp(
+          `^${path
             .replace(/(\/?)\*/g, '($1.*)?')
             .replace(/\/$/, '')
             .replace(/:(\w+)(\?)?(\.)?/g, '$2(?<$1>[^/]+)$2$3')
             .replace(/\.(?=[\w(])/, '\\.')
-            .replace(/\)\.\?\(([^[]+)\[\^/g, '?)\\.?($1(?<=\\.)[^\\.')
-        }/*$`,
-      );
-      if (url.pathname.match(re)) {
+            .replace(/\)\.\?\(([^[]+)\[\^/g, '?)\\.?($1(?<=\\.)[^\\.')}/*$`,
+        );
+
+        return url.pathname.match(re);
+      });
+
+      if (match) {
         return route;
       }
     }
   }
+
   return undefined;
 };
 
