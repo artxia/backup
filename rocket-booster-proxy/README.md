@@ -31,14 +31,15 @@
 [Install `wrangler` CLI](https://github.com/cloudflare/wrangler#installation) and authorize `wrangler` with a Cloudflare account.
 
 ```console
-npm install -g @cloudflare/wrangler
+npm install -g wrangler
+
 wrangler login
 ```
 
 Generate a new project from [reflare-template](https://github.com/xiaoyang-sde/reflare-template) and install the dependencies.
 
 ```console
-wrangler generate reflare-app https://github.com/xiaoyang-sde/reflare-template
+npm init cloudflare reflare-app https://github.com/xiaoyang-sde/reflare-template
 cd reflare-app
 npm install
 ```
@@ -170,8 +171,8 @@ Reflare could set custom headers to the request and response. Set up a reverse p
 
 Reflare implements express-like route matching. Reflare matches the path and HTTP method of each incoming request with the list of route definitions and forwards the request to the first matched route.
 
-- `path`: The path that matches the route
-- `methods`: The list of HTTP methods that match the route
+- `path` (`string | string[]`): The path or the list of paths that matches the route
+- `methods` (`string[]`): The list of HTTP methods that match the route
 
 ```ts
 // Matches all requests
@@ -186,22 +187,22 @@ reflare.push({
   methods: ['GET', 'POST'],
 });
 
-// Matches GET requests with path ending with `.json` in `/data`
+// Matches GET requests with path ending with `.json` or `.yaml` in `/data`
 reflare.push({
-  path: '/data/*.json',
+  path: ['/data/*.json', '/data/*.yaml'],
   methods: ['GET'],
 });
 ```
 
 ### Upstream
 
-- `domain`: The domain name of the upstream server
-- `protocol`: The protocol scheme of the upstream server (optional, defaults to `'https'`)
-- `port`: The port of the upstream server (optional, defaults to `80` or `443` based on `protocol`)
-- `timeout`: The maximum wait time on a request to the upstream server (optional, defaults to `10000`)
-- `weight`: The weight of the server that will be accounted for as part of the load balancing decision (optional, defaults to `1`)
-- `onRequest(request: Request, url: string)`: A function that can be called before the request is executed allowing the request object to modified
-- `onResponse(response: Response, url: string)`: A function that can be called after receiving the upstream response, allowing the the response object to be modified
+- `domain` (`string`): The domain name of the upstream server
+- `protocol` (`string`): The protocol scheme of the upstream server (optional, defaults to `'https'`)
+- `port` (`number`): The port of the upstream server (optional, defaults to `80` or `443` based on `protocol`)
+- `timeout` (`number`): The maximum wait time on a request to the upstream server (optional, defaults to `10000`)
+- `weight` (`number`): The weight of the server that will be accounted for as part of the load balancing decision (optional, defaults to `1`)
+- `onRequest(request: Request, url: string)`: The callback function that will be called before sending the request to upstream
+- `onResponse(response: Response, url: string)`: The callback function that will be called after receiving the response from upstream
 
 ```ts
 reflare.push({
@@ -212,6 +213,35 @@ reflare.push({
     port: 443,
     timeout: 10000,
     weight: 1,
+  },
+  /* ... */
+});
+```
+
+The `onRequest` and `onResponse` callback functions could change the content of the request or response. For example, the following example replaces the URL of the request and sets the `cache-control` header of the response based on its URL.
+
+```ts
+reflare.push({
+  path: '/*',
+  upstream: {
+    domain: 'httpbin.org',
+    protocol: 'https',
+    port: 443,
+    timeout: 10000,
+    weight: 1,
+
+    onRequest: (request: Request, url: string): Request => {
+      // Modifies the URL of the request
+      return new Request(url.replace('/original/request/path', ''), request);
+    },
+
+    onResponse: (response: Response, url: string): Response => {
+      // If the URL ends with `.html` or `/`, sets the `cache-control` header
+      if (url.endsWith('.html') || url.endsWith('/')) {
+        response.headers.set('cache-control', 'public, max-age=240, s-maxage=60');
+      }
+      return response;
+    }
   },
   /* ... */
 });
@@ -262,7 +292,7 @@ Each incoming request is inspected against the firewall rules defined in the `fi
   - `user-agent`: The content of the `user-agent` header, e.g. `Mozilla/5.0` (`string | undefined`)
   - `country`: The two-letter country code in the request, e.g. `US` (`string | undefined`)
   - `continent`: The continent of the incoming request, e.g. `NA` (`string | undefined`)
-- `value`: The value of the firewall rule
+- `value` (`string | string[] | number | number[] | RegExp`): The value of the firewall rule
 - `operator`: The operator to be used to determine if the request is blocked
   - `equal`: Block the request if `field` is equal to `value`
   - `not equal`: Block the request if `field` is not equal to `value`
@@ -296,8 +326,8 @@ reflare.push('/', {
 
 ### Headers
 
-- `request`: Sets request header going upstream to the backend. Accepts an object. (optional, defaults to `{}`)
-- `response`: Sets response header coming downstream to the client. Accepts an object. (optional, defaults to `{}`)
+- `request` (`Record<string, string>`): Sets request header going upstream to the backend. Accepts an object. (optional, defaults to `{}`)
+- `response` (`Record<string, string>`): Sets response header coming downstream to the client. Accepts an object. (optional, defaults to `{}`)
 
 ```ts
 reflare.push({
@@ -321,15 +351,15 @@ reflare.push({
   - `string[]`: an array of acceptable origins.
   - `*`: allow any origin to access the resource.
 
-- `methods`: Configures the `Access-Control-Allow-Methods` CORS header. Expect an array of valid HTTP methods or `*`. (optional, defaults to reflecting the method specified in the request’s `Access-Control-Request-Method` header)
+- `methods` (`string[]`): Configures the `Access-Control-Allow-Methods` CORS header. Expect an array of valid HTTP methods or `*`. (optional, defaults to reflecting the method specified in the request’s `Access-Control-Request-Method` header)
 
-- `allowedHeaders`: Configures the `Access-Control-Allow-Headers` CORS header. Expect an array of HTTP headers or *. (optional, defaults to reflecting the headers specified in the request’s `Access-Control-Request-Headers` header.)
+- `allowedHeaders` (`string[]`): Configures the `Access-Control-Allow-Headers` CORS header. Expect an array of HTTP headers or *. (optional, defaults to reflecting the headers specified in the request’s `Access-Control-Request-Headers` header.)
 
-- `exposedHeaders`: Configures the `Access-Control-Expose-Headers` CORS header. Expect an array of HTTP headers or `*`. (optional, defaults to `[]`)
+- `exposedHeaders` (`string[]`): Configures the `Access-Control-Expose-Headers` CORS header. Expect an array of HTTP headers or `*`. (optional, defaults to `[]`)
 
-- `credentials`: Configures the `Access-Control-Allow-Credentials` CORS header. Set to true to pass the header, or it is omitted. (optional, defaults to `false`)
+- `credentials` (`boolean`): Configures the `Access-Control-Allow-Credentials` CORS header. Set to true to pass the header, or it is omitted. (optional, defaults to `false`)
 
-- `maxAge`: Configures the `Access-Control-Max-Age` CORS header. Set to an integer to pass the header, or it is omitted. (optional)
+- `maxAge` (`number`): Configures the `Access-Control-Max-Age` CORS header. Set to an integer to pass the header, or it is omitted. (optional)
 
 ```ts
 reflare.push({
@@ -398,4 +428,4 @@ wrangler kv:key put --binding=[namespace] 'route-list' '[{"path":"/*","upstream"
 - **Report bugs**: Create an issue with the **Bug report** template.
 - **Add new feature or fix bugs**: Fork this repository, edit code, and send a pull request.
 
-[![Contributors](https://contributors-img.web.app/image?repo=xiaoyang-sde/reflare)](https://github.com/xiaoyang-sde/reflare/graphs/contributors)
+[![Contributors](https://contrib.rocks/image?repo=xiaoyang-sde/reflare)](https://github.com/xiaoyang-sde/reflare/graphs/contributors)

@@ -25,7 +25,7 @@ const filter = (
 
   for (const route of routeList) {
     if (route.methods === undefined || route.methods.includes(request.method)) {
-      const match = (!Array.isArray(route.path) ? [route.path] : route.path).some(path => {
+      const match = (Array.isArray(route.path) ? route.path : [route.path]).some((path) => {
         const re = RegExp(
           `^${path
             .replace(/(\/?)\*/g, '($1.*)?')
