@@ -46,17 +46,24 @@ test('upstream -> onRespone', async () => {
     path: '/foo*',
     upstream: {
       domain: 'httpbin.org',
-      onResponse: (res: Response): Response => {
-        const result = 1 + 1;
-        res.headers.set('x-foo', result.toString());
-        return res;
-      },
+      onResponse: [
+        (res: Response): Response => {
+          const result = 1 + 1;
+          res.headers.set('x-foo', result.toString());
+          return res;
+        },
+        (res: Response): Response => {
+          res.headers.set('x-bar', 'foo');
+          return res;
+        }
+      ],
     },
   });
 
   const response = await reflare.handle(request);
 
   expect(response.headers.get('x-foo')).toEqual('2');
+  expect(response.headers.get('x-bar')).toEqual('foo');
 });
 
 test('upstream -> with collection of paths', async () => {
