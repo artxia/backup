@@ -38,7 +38,7 @@ const botRoute = (bot, conn) => {
       botHelper.sendError(`${e} Unhandled 90000 Restarted`);
       setTimeout(() => {
         botHelper.restartApp();
-      }, 4000)
+      }, 4000);
       return;
     }
     if (`${e}`.match('out after 90000 milliseconds')) {
@@ -72,6 +72,7 @@ const botRoute = (bot, conn) => {
     }
   });
 
+  // eslint-disable-next-line consistent-return
   bot.command('stat', ctx => {
     if (botHelper.isAdmin(ctx.message.chat.id)) {
       if (!botHelper.db) {
@@ -108,12 +109,14 @@ const botRoute = (bot, conn) => {
       botHelper.sendAdmin(`srv: ${JSON.stringify(message)}`);
     }
   });
+
   bot.command('/toggleDev', ({message}) => {
     if (botHelper.isAdmin(message.from.id)) {
       global.isDevEnabled = !global.isDevEnabled;
       botHelper.sendAdmin(`dev is ${global.isDevEnabled}`);
     }
   });
+
   bot.command('/skipCount', ({message}) => {
     if (botHelper.isAdmin(message.from.id)) {
       if (!global.skipCount) {
@@ -122,11 +125,19 @@ const botRoute = (bot, conn) => {
       botHelper.sendAdmin(`skipCount is ${global.skipCount}`);
     }
   });
+
   bot.command('/restartApp', ({message}) => {
     if (botHelper.isAdmin(message.from.id)) {
       botHelper.restartApp();
     }
   });
+
+  bot.command('/gitPull', ({message}) => {
+    if (botHelper.isAdmin(message.from.id)) {
+      botHelper.gitPull();
+    }
+  });
+
   process.on('unhandledRejection', reason => {
     if (`${reason}`.match('bot was blocked by the user')) {
       return;
@@ -136,7 +147,9 @@ const botRoute = (bot, conn) => {
     }
     botHelper.sendAdmin(`unhandledRejection: ${reason}`);
   });
+
   format(bot, botHelper, skipCount);
+
   bot.launch();
 
   if (startCnt % 10 === 0 || process.env.DEV) {

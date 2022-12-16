@@ -1,12 +1,15 @@
 const amqp = require('amqplib');
 const logger = require('../api/utils/logger');
 
-const TASKS_CHANNEL = process.env.TASKS_DEV || 'tasks';
+const {puppetQue} = require('../config/vars');
 
+const TASKS_CHANNEL = process.env.TASKS_DEV || 'tasks';
 const TASKS2_CHANNEL = process.env.TASKS2_DEV || 'tasks2';
-const TASKS3_CHANNEL = process.env.TASKSPUPPET_DEV || 'puppet';
-const FILES_CHANNEL = process.env.FILESCHAN_DEV || 'files';
+
+// const FILES_CHANNEL = process.env.FILESCHAN_DEV || 'files';
+
 let rchannel = null;
+
 const starts = {
   start: process.hrtime(),
   start2: process.hrtime(),
@@ -20,7 +23,7 @@ const getStartName = q => {
     case TASKS2_CHANNEL:
       startName = 'start2';
       break;
-    case TASKS3_CHANNEL:
+    case puppetQue:
       startName = 'start3';
       break;
     default:
@@ -44,31 +47,38 @@ const resetTime = (q = TASKS_CHANNEL) => {
   logger(`reset ${startName}`);
   starts[startName] = process.hrtime();
 };
+
 let connection = null;
-const createChannel = async (queueName = TASKS_CHANNEL) => {
+const startFirst = async () => {
+  try {
+    if (!connection) {
+      connection = await amqp.connect(process.env.MESSAGE_QUEUE);
+    }
+    if (!rchannel) {
+      rchannel = await connection.createChannel();
+    }
+  } catch (e) {
+    console.log('err rabbit');
+    console.log(e);
+    logger(e);
+  }
+};
+
+const createChan = async (queueName = TASKS_CHANNEL) => {
   let channel;
   try {
     if (!connection) {
       connection = await amqp.connect(process.env.MESSAGE_QUEUE);
     }
     channel = await connection.createChannel();
+    await channel.prefetch(1);
     await channel.assertQueue(queueName, {durable: true});
   } catch (e) {
+    console.log('err rabbit');
     console.log(e);
     logger(e);
   }
-  rchannel = channel;
   return channel;
-};
-
-const startChannel = (queueName = TASKS_CHANNEL) => {
-  try {
-    createChannel(queueName).then(channel => {
-      rchannel = channel;
-    });
-  } catch (e) {
-    logger(e);
-  }
 };
 
 const run = async (job, qName) => {
@@ -77,26 +87,31 @@ const run = async (job, qName) => {
     if (!queueName) {
       queueName = TASKS_CHANNEL;
     }
-    const channel = await createChannel(queueName);
-    await channel.prefetch(1);
-    channel.consume(queueName, async message => {
-      const content = message.content.toString();
-      const task = JSON.parse(content);
-      if (queueName !== TASKS_CHANNEL) task.q = queueName;
-      try {
-        await job(task);
-      } catch (e) {
-        // console.log(e);
+    const channel = await createChan(queueName);
+    channel.consume(queueName, message => {
+      if (message) {
+        const {content} = message;
+        const task = JSON.parse(`${content}`);
+        if (queueName !== TASKS_CHANNEL) {
+          task.q = queueName;
+        }
+        job(task)
+          .then(() => {
+            channel.ack(message);
+          })
+          .catch(e => {
+            //
+          });
       }
-      channel.ack(message);
     });
   } catch (e) {
+    console.log('err rabbit job');
     logger(e);
   }
 };
 
 const runSecond = job => run(job, TASKS2_CHANNEL);
-const runPuppet = job => run(job, TASKS3_CHANNEL);
+const runPuppet = job => run(job, puppetQue);
 
 const keys = [
   process.env.TGPHTOKEN_0,
@@ -137,7 +152,7 @@ function getKey() {
 }
 
 const getParams = (queueName = TASKS_CHANNEL) => {
-  const isPuppet = queueName === TASKS3_CHANNEL;
+  const isPuppet = queueName === puppetQue;
   let accessToken = getKey();
   if (queueName === TASKS2_CHANNEL) {
     accessToken = process.env.TGPHTOKEN2;
@@ -148,31 +163,27 @@ const getParams = (queueName = TASKS_CHANNEL) => {
   };
 };
 
-const addToQueue = async (task, qName = TASKS_CHANNEL) => {
+const addToQueue = (task, qName = TASKS_CHANNEL) => {
   if (rchannel) {
-    let queueName = qName;
-    const el = elapsedTime(queueName);
-    const elTime = elapsedSec(queueName);
-    logger(`availableOne ${availableOne}`);
-    logger(`elTime ${elTime}`);
-    if (queueName === TASKS_CHANNEL && !availableOne && elTime > 15) {
-      queueName = chanSecond();
-    }
-    logger(el);
     try {
-      await rchannel.sendToQueue(queueName, Buffer.from(JSON.stringify(task)), {
+      let queueName = qName;
+      const el = elapsedTime(queueName);
+      const elTime = elapsedSec(queueName);
+      logger(`availableOne ${availableOne}`);
+      logger(`elTime ${elTime}`);
+      if (queueName === TASKS_CHANNEL && !availableOne && elTime > 15) {
+        queueName = TASKS2_CHANNEL;
+      }
+      logger(el);
+      rchannel.sendToQueue(queueName, Buffer.from(JSON.stringify(task)), {
         contentType: 'application/json',
         persistent: true,
       });
     } catch (e) {
-      //
+      console.log(e);
     }
   }
 };
-const addToQueueFile = async task => addToQueue(task, FILES_CHANNEL);
-const chanSecond = () => TASKS2_CHANNEL;
-const chanPuppet = () => TASKS3_CHANNEL;
-
 const time = (queueName = TASKS_CHANNEL, start = false) => {
   if (queueName === TASKS_CHANNEL) {
     availableOne = !start;
@@ -183,16 +194,12 @@ const time = (queueName = TASKS_CHANNEL, start = false) => {
   }
   return t;
 };
-const timeStart = (q) => time(q, true);
+const timeStart = q => time(q, true);
 
-module.exports.createChannel = createChannel;
-module.exports.startChannel = startChannel;
+module.exports.startFirst = startFirst;
 module.exports.addToQueue = addToQueue;
-module.exports.addToQueueFile = addToQueueFile;
 module.exports.runSecond = runSecond;
 module.exports.runPuppet = runPuppet;
-module.exports.chanSecond = chanSecond;
-module.exports.chanPuppet = chanPuppet;
 module.exports.getParams = getParams;
 module.exports.time = time;
 module.exports.run = run;
