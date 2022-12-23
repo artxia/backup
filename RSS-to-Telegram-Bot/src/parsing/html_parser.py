@@ -7,7 +7,7 @@ import asyncio
 from bs4 import BeautifulSoup
 from bs4.element import NavigableString, PageElement, Tag
 from urllib.parse import urlparse
-from attr import define
+from dataclasses import dataclass
 
 from .. import web, env
 from .medium import Video, Image, Media, Animation, Audio, UploadedImage
@@ -34,7 +34,7 @@ srcsetParser = re.compile(r'(?:^|,\s*)'
 def effective_link(content: TypeTextContent, href: str, base: str = None) -> Union[TypeTextContent, Link, Text]:
     if href.startswith('javascript'):  # drop javascript links
         return content
-    href = resolve_relative_link(href, base)
+    href = resolve_relative_link(base, href)
     if not isAbsoluteHttpLink(href):
         return Text([Text(f'{content} ('), Code(href), Text(')')])
     return Link(content, href)
@@ -304,7 +304,7 @@ class Parser:
         return str(self.html_tree)
 
 
-@define
+@dataclass
 class Parsed:
     html_tree: HtmlTree
     media: Media
