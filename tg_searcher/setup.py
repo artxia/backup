@@ -4,7 +4,7 @@ import pathlib
 here = pathlib.Path(__file__).parent.resolve()
 long_description = (here / 'README.md').read_text(encoding='utf-8')
 
-__version__ = '0.3.1'
+__version__ = (here / '__version__').read_text().strip()
 
 setup(
     name='tg-searcher',
@@ -14,6 +14,9 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     include_package_data=True,
+    package_data={
+        'tg_searcher': ['../__version__'],
+    },
     author='Sharzy L',
     author_email='me@sharzy.in',
     url='https://github.com/SharzyL/tg_searcher',

@@ -1,9 +1,13 @@
 # CHANGELOG
 
-## dev
+## [0.4.0] - 2023.2.2
 
 ### Added
 - Add nix flake deployment
+- `no_redis` frontend config
+
+### Changed
+- `\clear` will do nothing, `\clear all` will clear all
 
 ### Fixed
 - Error when proxy config is missed

@@ -13,14 +13,14 @@
 python3 -m pip install -U tg-searcher
 
 # or install from github
-# python3 -m pip install -U git+https://github.com/SharzyL/tg_searcher
+python3 -m pip install -U git+https://github.com/SharzyL/tg_searcher
 
 # or install locally
-# git clone https://github.com/SharzyL/tg_seacher && cd tg_searcher
-# python3 -m pip install -e .
+git clone https://github.com/SharzyL/tg_searcher && cd tg_searcher
+python3 -m pip install -e .
 ```
 
-参考 README 填写配置文件，运行 `python3 -m tg_searcher -f /path/to/config.yaml` 即可。如果 pip 安装可执行文件的目录在 `PATH` 里面，也可以直接 `tg-searcher -f /path/to/config.yaml`。
+参考 [configuration.md](./configuration.md) 填写配置文件之后，运行 `python3 -m tg_searcher -f /path/to/config.yaml` 即可。如果 pip 安装可执行文件的目录在 `PATH` 中，也可以直接 `tg-searcher -f /path/to/config.yaml`。
 
 首次运行时需要填写验证码（如果设置了两步验证，还需填写密码）。运行成功后 bot 会在 Telegram 中向管理员发送一条包含服务器状态的消息。
 
@@ -93,7 +93,7 @@ docker-compose up -d
 
 ## Nix Flake
 
-假设你正在使用 NixOS，并且启用了 flake，以下是一个部署 `tg_searcher` 的示例:
+tg-searcher 有完善的 nix flake 支持，只需添加对应的 NixOS 模块即可启用，示例如下：
 
 ```nix
 # flake.nix
@@ -112,43 +112,20 @@ docker-compose up -d
     in
     nixpkgs.lib.nixosSystem {
       inherit system;
-      specialArgs = inputs;
       modules = [
+        searcher.nixosModules.default
         {
-          nixpkgs.overlays = [
-            (final: prev: {
-              searcher = searcher.defaultPackage.${system};
-            })
-          ];
+          services.tg-searcher = {
+            enable = true;
+            configFile = "/path/to/searcher.yml";
+            redis.enable = true;
+          };
         }
-        ./searcher.nix
       ];
     };
   };
 }
 ```
 
-```nix
-# searcher.nix
-{ config, lib, pkgs, ... }:
-
-{
-  systemd.services.searcher = {
-    description = "tg searcher";
-    after = [ "network.target" "redis-searcher.service" ];
-    wantedBy = [ "multi-user.target" ];
-    serviceConfig = {
-      ExecStart = "${pkgs.searcher}/bin/tg-searcher --config /path/to/config.yaml";
-      User = "sharzy";
-    };
-  };
-
-  services.redis.servers.searcher = {
-    enable = true;
-    port = 6379;
-  };
-}
-```
-
-使用 `nixos-rebuild switch` 即可部署。 
+使用 `nixos-rebuild switch` 即可部署。初次登录的时候需要手动登录，找到 `pkgs.tg-searcher` 的路径手动运行程序即可（在 systemctl status 里面很容易找到这个路径）。
 

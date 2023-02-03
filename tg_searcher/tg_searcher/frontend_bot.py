@@ -5,6 +5,7 @@ from traceback import format_exc
 from argparse import ArgumentParser
 import shlex
 
+import redis
 import whoosh.index
 from telethon import TelegramClient, events, Button
 from telethon.tl.types import BotCommand, BotCommandScopePeer, BotCommandScopeDefault
@@ -13,7 +14,7 @@ from telethon.tl.functions.bots import SetBotCommandsRequest
 from redis import Redis
 from redis.exceptions import ConnectionError as RedisConnectionError
 
-from .common import CommonBotConfig, get_logger, get_share_id, remove_first_word
+from .common import CommonBotConfig, get_logger, get_share_id, remove_first_word, brief_content
 from .backend_bot import BackendBot, EntityNotFoundError
 from .indexer import SearchResult
 
@@ -30,11 +31,32 @@ class BotFrontendConfig:
         self.bot_token: str = kw['bot_token']
         self.admin: Union[int, str] = kw['admin_id']
         self.page_len: int = kw.get('page_len', 10)
-        self.redis_host: Tuple[str, int] = self._parse_redis_cfg(kw.get('redis', 'localhost:6379'))
+        self.no_redis: bool = kw.get('no_redis', False)
+        self.redis_host: Tuple[str, int] = None if self.no_redis else \
+            self._parse_redis_cfg(kw.get('redis', 'localhost:6379'))
 
         self.private_mode: bool = kw.get('private_mode', False)
         self.private_whitelist: Set[int] = set(kw.get('private_whitelist', []))
         self.private_whitelist.add(self.admin)
+
+
+class FakeRedis:
+    """
+    Sometimes we want a lightweight deployment without using a redis to persist data,
+    FakeRedis provides a in-memory replacement for redis interface
+    """
+
+    def __init__(self):
+        self._data = {}
+
+    def get(self, key):
+        return self._data.get(key)
+
+    def set(self, key, val):
+        self._data[key] = val
+
+    def ping(self):
+        pass
 
 
 class BotFrontend:
@@ -59,7 +81,9 @@ class BotFrontend:
             proxy=common_cfg.proxy
         )
         self._cfg = cfg
-        self._redis = Redis(host=cfg.redis_host[0], port=cfg.redis_host[1], decode_responses=True)
+        self._redis: Union[redis.client.Redis, FakeRedis] = FakeRedis() \
+            if cfg.no_redis else \
+            Redis(host=cfg.redis_host[0], port=cfg.redis_host[1], decode_responses=True)
         self._logger = get_logger(f'bot-frontend:{frontend_id}')
         self._admin = None  # to be initialized in start()
         self.username = None
@@ -93,9 +117,10 @@ class BotFrontend:
         self.backend.excluded_chats.add((await self.bot.get_me()).id)
 
         try:
-            sb = ['bot 初始化完成\n\n', await self.backend.get_index_status()]
+            msg_head = 'bot 初始化完成\n\n'
+            stat_text = await self.backend.get_index_status(length_limit=4000 - len(msg_head))
             # TODO: pass structured status message from backend
-            await self.bot.send_message(self._admin, ''.join(sb), parse_mode='html')
+            await self.bot.send_message(self._admin, msg_head + stat_text, parse_mode='html')
         except Exception as e:
             await self.bot.send_message(self._admin, f'Error on get_index_status: {e}')
 
@@ -202,12 +227,25 @@ class BotFrontend:
 
         elif text.startswith('/clear'):
             args = self.chat_ids_parser.parse_args(shlex.split(text)[1:])
-            chat_ids = await self._chat_ids_from_args(args.chats) or self._query_selected_chat(event)
+
+            chat_ids = None
+            selected_chat_id = self._query_selected_chat(event)
+            if len(args.chats) == 0 and selected_chat_id is None:
+                await event.reply(
+                    f'请使用 <pre>/clear all</pre> 以清除全部索引，'
+                    f'或者使用 <pre>/clear [CHAT ...]</pre> 指定需要删除的对话的名称或 ID', parse_mode='html')
+                return
+            if len(args.chats) == 1 and args.chats[0] == 'all':
+                chat_ids = None  # None means clear all
+            else:
+                chat_ids = await self._chat_ids_from_args(args.chats) or selected_chat_id
+
             self._logger.info(f'clear downloading history of chats {chat_ids}')
             self.backend.clear(chat_ids)
             if chat_ids:
                 for chat_id in chat_ids:
-                    await event.reply(f'{await self.backend.format_dialog_html(chat_id)} 的索引已清除', parse_mode='html')
+                    await event.reply(f'{await self.backend.format_dialog_html(chat_id)} 的索引已清除',
+                                      parse_mode='html')
             else:
                 await event.reply('全部索引已清除')
 
@@ -235,7 +273,7 @@ class BotFrontend:
     async def _search(self, event: events.NewMessage.Event):
         print('start search')
         if self.backend.is_empty():
-            await event.reply('当前索引为空，请先 /download_history 建立索引')
+            await event.reply('当前索引为空，请先 /download_chat 建立索引')
             return
         start_time = time()
         q: str = event.raw_text
@@ -243,7 +281,7 @@ class BotFrontend:
             first_space = q.find(' ')
             if first_space < 0:
                 first_space = len(q)
-            q = q[first_space+1:]
+            q = q[first_space + 1:]
 
         if len(q) == 0:
             # do not respond to empty query
