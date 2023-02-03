@@ -12,7 +12,7 @@ from telethon.tl.functions.messages import UploadMediaRequest
 from telethon.tl.types import InputMediaPhotoExternal, InputMediaDocumentExternal, \
     MessageMediaPhoto, MessageMediaDocument, InputFile, InputFileBig, InputMediaUploadedPhoto
 from telethon.errors import FloodWaitError, SlowModeWaitError, ServerError, BadRequestError
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlparse
 
 from .. import env, log, web, locks
 from .html_node import Code, Link, Br, Text, HtmlTree
@@ -311,7 +311,7 @@ class Medium(AbstractMedium):
                 if (
                         # let Telegram DC to determine the validity of media
                         env.LAZY_MEDIA_VALIDATION
-                        # images from images.weserv.nl are considered always valid
+                        # images from wsrv.nl are considered always valid
                         # but if the dimension of the image has not been extracted yet, let it continue
                         or (env.TRAFFIC_SAVING
                             and url.startswith(env.IMAGES_WESERV_NL)
@@ -338,7 +338,7 @@ class Medium(AbstractMedium):
                         and all(keyword not in self.content_type for keyword in ('webp', 'svg', 'application')) \
                         and not url.startswith(env.IMAGES_WESERV_NL):
                     # enforcing dimension detection for images
-                    self.width, self.height = await detect_image_dimension_via_images_weserv_nl(url)
+                    self.width, self.height = await detect_image_dimension_via_weserv(url)
                 self.max_width = max(self.max_width, self.width)
                 self.max_height = max(self.max_height, self.height)
 
@@ -353,7 +353,7 @@ class Medium(AbstractMedium):
                             self.content_type
                             and any(keyword in self.content_type for keyword in ('svg', 'application'))
                     ):
-                        # immediately fall back to 'images.weserv.nl'
+                        # immediately fall back to 'wsrv.nl'
                         self.urls = [url for url in self.urls if url.startswith(env.IMAGES_WESERV_NL)]
                         invalid_reasons.append('force convert SVG to PNG')
                         continue
@@ -387,10 +387,10 @@ class Medium(AbstractMedium):
                     invalid_reasons.append(f'size > {self.maxSize}')
                     self.valid = False
 
-                # some images cannot be sent as file directly, if so, images.weserv.nl may help
+                # some images cannot be sent as file directly, if so, wsrv.nl may help
                 if self.type == FILE and self.content_type and self.content_type.startswith('image') \
                         and not url.startswith(env.IMAGES_WESERV_NL):
-                    self.urls.append(construct_images_weserv_nl_url_convert_to_jpg(url))
+                    self.urls.append(construct_weserv_url_convert_to_jpg(url))
 
                 if self.valid:
                     self.chosen_url = url
@@ -550,9 +550,9 @@ class Image(Medium):
             if url not in new_urls:
                 new_urls.append(url)
         self.urls = new_urls
-        urls_not_images_weserv_nl = [url for url in self.urls if not url.startswith(env.IMAGES_WESERV_NL)]
-        self.urls.extend(construct_images_weserv_nl_url(urls_not_images_weserv_nl[i])
-                         for i in range(min(len(urls_not_images_weserv_nl), 3)))  # use for final fallback
+        urls_not_weserv = [url for url in self.urls if not url.startswith(env.IMAGES_WESERV_NL)]
+        self.urls.extend(construct_weserv_url_convert_to_2560_png(urls_not_weserv[i])
+                         for i in range(min(len(urls_not_weserv), 3)))  # use for final fallback
         self.chosen_url = self.urls[0]
 
     async def change_server(self) -> bool:
@@ -937,7 +937,7 @@ class Media:
 
             def __eq__(self, other):
                 return isinstance(self, other) and self.valid == other.valid and self.invalid == other.invalid \
-                       and self.pending == other.pending and self.need_type_fallback == other.need_type_fallback
+                    and self.pending == other.pending and self.need_type_fallback == other.need_type_fallback
 
         return MediaStat()
 
@@ -946,34 +946,49 @@ class Media:
         return '|'.join(medium.hash for medium in self._media)
 
 
-def construct_images_weserv_nl_url(url: str,
-                                   width: Optional[int] = 2560,
-                                   height: Optional[int] = 2560,
-                                   fit: Optional[str] = 'inside',
-                                   output_format: Optional[str] = 'png',
-                                   without_enlargement: Optional[bool] = True,
-                                   default_image: Optional[str] = None) -> str:
-    params = {
-        'url': url,
-        'w': width,
-        'h': height,
-        'fit': fit,
-        'output': output_format,
-        'we': '1' if without_enlargement else None,
-        'default': default_image,
-    }
-    filtered_params = {k: v for k, v in params.items() if v is not None}
-    query_string = urlencode(filtered_params)
-    return f'{env.IMAGES_WESERV_NL}?{query_string}'
+def weserv_param_encode(param: str) -> str:
+    hash_index = param.find('#')
+    if hash_index != -1:
+        param = param[:hash_index]  # remove fragment
+    return param.replace('&', '%26')  # & will mess up the query string, other characters are fine
 
 
-def construct_images_weserv_nl_url_convert_to_jpg(url: str) -> str:
-    return construct_images_weserv_nl_url(url, width=None, height=None, fit=None, without_enlargement=None,
-                                          output_format='jpg')
+def construct_weserv_url(url: str,
+                         width: Optional[int] = None,
+                         height: Optional[int] = None,
+                         fit: Optional[str] = None,
+                         output_format: Optional[str] = None,
+                         without_enlargement: Optional[bool] = None,
+                         default_image: Optional[str] = None) -> str:
+    return (
+            f'{env.IMAGES_WESERV_NL}?'
+            f'url={weserv_param_encode(url)}'
+            + (f'&w={width}' if width else '')
+            + (f'&h={height}' if height else '')
+            + (f'&fit={fit}' if fit else '')
+            + (f'&output={output_format}' if output_format else '')
+            + (f'&we=1' if without_enlargement else '')
+            + (f'&default={weserv_param_encode(default_image)}' if default_image else '')
+    )
 
 
-async def detect_image_dimension_via_images_weserv_nl(url: str) -> tuple[int, int]:
-    url = construct_images_weserv_nl_url_convert_to_jpg(url)
+def construct_weserv_url_convert_to_2560_png(url: str) -> str:
+    return construct_weserv_url(
+        url,
+        width=2560,
+        height=2560,
+        fit='inside',
+        output_format='png',
+        without_enlargement=True
+    )
+
+
+def construct_weserv_url_convert_to_jpg(url: str) -> str:
+    return construct_weserv_url(url, output_format='jpg')
+
+
+async def detect_image_dimension_via_weserv(url: str) -> tuple[int, int]:
+    url = construct_weserv_url_convert_to_jpg(url)
     res = await web.get_medium_info(url)
     if not res:
         return -1, -1
