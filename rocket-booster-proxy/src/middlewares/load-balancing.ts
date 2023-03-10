@@ -16,7 +16,7 @@ export const ipHashHandler: LoadBalancingHandler = (
 ) => {
   const ipString = request.headers.get('cf-connecting-ip') || '0.0.0.0';
   const userIP = ipString.split('.').map(
-    (octect, index, array) => parseInt(octect, 10) * (256 ** (array.length - index - 1)),
+    (octet, index, array) => parseInt(octet, 10) * (256 ** (array.length - index - 1)),
   ).reduce(
     (accumulator, current) => accumulator + current,
   );

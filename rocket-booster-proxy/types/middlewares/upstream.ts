@@ -1,5 +1,5 @@
-export type onResponseCallback = (response: Response, url: string) => Response;
-export type onRequestCallback = (request: Request, url: string) => Request;
+export type RequestCallback = (request: Request, url: string) => Request;
+export type ResponseCallback = (response: Response, url: string) => Response;
 
 export interface UpstreamOptions {
   domain: string;
@@ -7,6 +7,6 @@ export interface UpstreamOptions {
   port?: number;
   timeout?: number;
   weight?: number;
-  onRequest?: onRequestCallback | onRequestCallback[];
-  onResponse?: onResponseCallback | onResponseCallback[];
+  onRequest?: RequestCallback | RequestCallback[];
+  onResponse?: ResponseCallback | ResponseCallback[];
 }

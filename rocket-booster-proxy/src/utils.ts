@@ -42,6 +42,6 @@ export const isSameOrigin = (
   return true;
 };
 
-export const convertToArray = <T>(maybeArray: T | T[]): T[] => {
-  return Array.isArray(maybeArray) ? maybeArray : [maybeArray]
-};
+export const convertToArray = <T>(
+  value: T | T[],
+): T[] => (Array.isArray(value) ? value : [value]);

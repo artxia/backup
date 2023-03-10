@@ -14,8 +14,6 @@ test('upstream -> basic', async () => {
   expect(response.url).toBe('https://httpbin.org/get');
 });
 
-// intercept a request with a specific pathname, (/foo/bar/baz)
-// rewrite the request to a totally pathname before it's sent
 test('upstream -> onRequest', async () => {
   const request = new Request('https://localhost/foo/bar/baz');
   const reflare = await useReflare();
@@ -37,8 +35,7 @@ test('upstream -> onRequest', async () => {
   expect(response.url).toBe('https://httpbin.org/get');
 });
 
-// onResponse modify the response object before returning it
-test('upstream -> onRespone', async () => {
+test('upstream -> onResponse', async () => {
   const request = new Request('https://localhost/foo/bar/baz');
   const reflare = await useReflare();
 
@@ -55,7 +52,7 @@ test('upstream -> onRespone', async () => {
         (res: Response): Response => {
           res.headers.set('x-bar', 'foo');
           return res;
-        }
+        },
       ],
     },
   });

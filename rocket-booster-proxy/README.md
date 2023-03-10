@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[![GitHub Actions](https://img.shields.io/github/workflow/status/xiaoyang-sde/reflare/Node.js%20Test%20and%20Build?style=for-the-badge&logo=github)](https://github.com/xiaoyang-sde/reflare/actions)
+[![GitHub Actions](https://img.shields.io/github/actions/workflow/status/xiaoyang-sde/reflare/node.yml?branch=master&style=for-the-badge&logo=github)](https://github.com/xiaoyang-sde/reflare/actions)
 [![Codecov Coverage](https://img.shields.io/codecov/c/github/xiaoyang-sde/reflare?style=for-the-badge&logo=codecov)](https://app.codecov.io/gh/xiaoyang-sde/reflare/)
 [![Package Version](https://img.shields.io/npm/v/reflare?style=for-the-badge&logo=npm&color=red)](https://www.npmjs.com/package/reflare)
 [![Download Statistics](https://img.shields.io/npm/dt/reflare?style=for-the-badge&logo=npm&color=blue)](https://www.npmjs.com/package/reflare)
@@ -218,7 +218,7 @@ reflare.push({
 });
 ```
 
-The `onRequest` and `onResponse` callback functions could change the content of the request or response. For example, the following example replaces the URL of the request and sets the `cache-control` header of the response based on its URL.
+The `onRequest` and `onResponse` fields accept callback functions that could change the content of the request or response. For example, the following example replaces the URL of the request and sets the `cache-control` header of the response based on its URL. These fields accept either a standalone function or an array of functions that will be executed sequentially.
 
 ```ts
 reflare.push({
@@ -416,7 +416,7 @@ addEventListener('fetch', (event) => {
 });
 ```
 
-The route definitions should be stored as a JSON array in the `route-list` key of `namespace`. The KV namespace could be modified with [`wrangler`](https://developers.cloudflare.com/workers/cli-wrangler/commands#kvkey) or [Cloudflare API](https://api.cloudflare.com/#workers-kv-namespace-write-key-value-pair). The Reflare dashboard for route management is under development and will be released soon.
+The route definitions should be stored as a JSON array in the `route-list` key of `namespace`. The KV namespace could be modified with [`wrangler`](https://developers.cloudflare.com/workers/cli-wrangler/commands#kvkey) or [Cloudflare API](https://api.cloudflare.com/#workers-kv-namespace-write-key-value-pair).
 
 ```console
 wrangler kv:key put --binding=[namespace] 'route-list' '[{"path":"/*","upstream":{"domain":"httpbin.org","protocol":"https"}}]'

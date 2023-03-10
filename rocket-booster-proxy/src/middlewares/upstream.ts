@@ -1,12 +1,12 @@
 import { Middleware } from '../../types/middleware';
-import { UpstreamOptions, onResponseCallback, onRequestCallback } from '../../types/middlewares/upstream';
+import { UpstreamOptions, ResponseCallback, RequestCallback } from '../../types/middlewares/upstream';
 import { convertToArray } from '../utils';
 
 export const cloneRequest = (
   url: string,
   request: Request,
 ): Request => {
-  const requestInit: CfRequestInit = {
+  const requestInit: RequestInit = {
     body: request.body,
     method: request.method,
     headers: request.headers,
@@ -63,18 +63,18 @@ export const useUpstream: Middleware = async (
   );
 
   const onRequest = upstream.onRequest
-    ? convertToArray<onRequestCallback>(upstream.onRequest)
+    ? convertToArray<RequestCallback>(upstream.onRequest)
     : null;
 
   const onResponse = upstream.onResponse
-    ? convertToArray<onResponseCallback>(upstream.onResponse)
+    ? convertToArray<ResponseCallback>(upstream.onResponse)
     : null;
 
   let upstreamRequest = cloneRequest(url, request);
 
   if (onRequest) {
     upstreamRequest = onRequest.reduce(
-      (prevRequest: Request, fn: onRequestCallback) => fn(cloneRequest(url, prevRequest), url),
+      (prevRequest: Request, fn: RequestCallback) => fn(cloneRequest(url, prevRequest), url),
       upstreamRequest,
     );
   }
@@ -83,7 +83,10 @@ export const useUpstream: Middleware = async (
 
   if (onResponse) {
     context.response = onResponse.reduce(
-      (prevResponse: Response, fn: onResponseCallback) => fn(new Response(prevResponse.body, prevResponse), url),
+      (
+        prevResponse: Response,
+        fn: ResponseCallback,
+      ) => fn(new Response(prevResponse.body, prevResponse), url),
       new Response(context.response.body, context.response),
     );
   }

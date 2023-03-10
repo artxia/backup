@@ -59,9 +59,9 @@ export const getFieldParam = (
     case 'asn':
       return cfProperties?.asn;
     case 'continent':
-      return cfProperties?.continent || '';
+      return cfProperties && 'continent' in cfProperties ? cfProperties.continent : '';
     case 'country':
-      return cfProperties?.country;
+      return cfProperties && 'country' in cfProperties ? cfProperties.country : '';
     case 'hostname':
       return request.headers.get('host') || '';
     case 'ip':
