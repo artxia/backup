@@ -82,3 +82,40 @@ test('headers.ts -> response header', async () => {
   expect(response.headers.get('connection')).toMatch('keep-alive');
   expect(response.headers.get('content-type')).toMatch('application/json');
 });
+
+test('headers.ts -> delete request header', async () => {
+  const reflare = await useReflare();
+
+  reflare.push({
+    path: '/*',
+    upstream: { domain: 'httpbin.org' },
+    headers: {
+      request: {
+        'user-agent': '',
+      },
+    },
+  });
+
+  const response = await reflare.handle(request);
+  const requestInfo = await response.json<HTTPBinGetResponse>();
+  expect(requestInfo.headers['user-agent']).toBeUndefined();
+});
+
+test('headers.ts -> delete response header', async () => {
+  const reflare = await useReflare();
+
+  reflare.push({
+    path: '/*',
+    upstream: { domain: 'httpbin.org' },
+    headers: {
+      response: {
+        server: '',
+        'content-type': '',
+      },
+    },
+  });
+
+  const response = await reflare.handle(request);
+  expect(response.headers.has('server')).toBeFalsy();
+  expect(response.headers.has('content-type')).toBeFalsy();
+});
