@@ -47,7 +47,7 @@ export const useHeaders: Middleware = async (
 
   if (route.headers.request !== undefined) {
     for (const [key, value] of Object.entries(route.headers.request)) {
-      if (value === '' && requestHeaders.has(key)) {
+      if (value.length === 0) {
         requestHeaders.delete(key);
       } else {
         requestHeaders.set(key, value);
@@ -68,7 +68,7 @@ export const useHeaders: Middleware = async (
 
   if (route.headers.response !== undefined) {
     for (const [key, value] of Object.entries(route.headers.response)) {
-      if (value === '' && responseHeaders.has(key)) {
+      if (value.length === 0) {
         responseHeaders.delete(key);
       } else {
         responseHeaders.set(key, value);

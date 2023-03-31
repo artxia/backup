@@ -91,14 +91,22 @@ test('headers.ts -> delete request header', async () => {
     upstream: { domain: 'httpbin.org' },
     headers: {
       request: {
-        'user-agent': '',
+        'X-Forwarded-Proto': '',
+        'X-Forwarded-For': '',
+        'X-Forwarded-Host': '',
+        'User-Agent': '',
+        'Header-Not-Exist': '',
       },
     },
   });
 
   const response = await reflare.handle(request);
   const requestInfo = await response.json<HTTPBinGetResponse>();
-  expect(requestInfo.headers['user-agent']).toBeUndefined();
+  expect(requestInfo.headers['X-Forwarded-For']).toBeUndefined();
+  expect(requestInfo.headers['X-Forwarded-Host']).toBeUndefined();
+  expect(requestInfo.headers['X-Forwarded-Proto']).toBeUndefined();
+  expect(requestInfo.headers['User-Agent']).toBeUndefined();
+  expect(requestInfo.headers['Header-Not-Exist']).toBeUndefined();
 });
 
 test('headers.ts -> delete response header', async () => {
@@ -109,13 +117,15 @@ test('headers.ts -> delete response header', async () => {
     upstream: { domain: 'httpbin.org' },
     headers: {
       response: {
-        server: '',
-        'content-type': '',
+        Server: '',
+        'Content-Type': '',
+        'Header-Not-Exist': '',
       },
     },
   });
 
   const response = await reflare.handle(request);
-  expect(response.headers.has('server')).toBeFalsy();
-  expect(response.headers.has('content-type')).toBeFalsy();
+  expect(response.headers.has('Server')).toBeFalsy();
+  expect(response.headers.has('Content-Type')).toBeFalsy();
+  expect(response.headers.has('Header-Not-Exist')).toBeFalsy();
 });
