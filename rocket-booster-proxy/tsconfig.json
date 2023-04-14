@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "outDir": "./dist",
+    "outDir": "dist",
     "module": "ESNext",
     "target": "ESNext",
     "moduleResolution": "Node",
@@ -8,8 +8,7 @@
       "ESNext"
     ],
     "types": [
-      "jest",
-      "@cloudflare/workers-types"
+      "@cloudflare/workers-types",
     ],
     "allowJs": false,
     "alwaysStrict": true,
@@ -23,17 +22,11 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
-    "suppressImplicitAnyIndexErrors": true,
     "allowSyntheticDefaultImports": true,
     "experimentalDecorators": true
   },
   "include": [
     "src/**/*.ts",
-    "tests/**/*.ts",
     "types/**/*.ts"
-  ],
-  "exclude": [
-    "node_modules/",
-    "dist/"
   ]
 }

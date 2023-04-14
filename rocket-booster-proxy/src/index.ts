@@ -1,3 +1,5 @@
+import { WorkersKV } from './database';
+import { usePipeline } from './middleware';
 import {
   useCORS,
   useFirewall,
@@ -5,10 +7,7 @@ import {
   useLoadBalancing,
   useUpstream,
 } from './middlewares';
-import { WorkersKV } from './database';
-import { usePipeline } from './middleware';
-import { createResponse, getHostname, convertToArray } from './utils';
-
+import { getHostname, castToIterable } from './utils';
 import {
   Reflare,
   Route,
@@ -25,7 +24,7 @@ const filter = (
 
   for (const route of routeList) {
     if (route.methods === undefined || route.methods.includes(request.method)) {
-      const match = convertToArray<string>(route.path).some((path) => {
+      const match = castToIterable<string>(route.path).some((path) => {
         const re = RegExp(
           `^${path
             .replace(/(\/?)\*/g, '($1.*)?')
@@ -84,11 +83,13 @@ const useReflare = async (
   ): Promise<Response> => {
     const route = filter(request, routeList);
     if (route === undefined) {
-      return createResponse('Failed to find a route that matches the path and method of the current request', 500);
+      return new Response('Failed to find a route that matches the path and method of the current request', {
+        status: 500,
+      });
     }
 
     const context: Context = {
-      request,
+      request: request.clone(),
       route,
       hostname: getHostname(request),
       response: new Response('Unhandled response'),
@@ -99,7 +100,9 @@ const useReflare = async (
       await pipeline.execute(context);
     } catch (error) {
       if (error instanceof Error) {
-        context.response = createResponse(error.message, 500);
+        context.response = new Response(error.message, {
+          status: 500,
+        });
       }
     }
     return context.response;

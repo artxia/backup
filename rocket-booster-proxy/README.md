@@ -12,31 +12,23 @@
 [![forthebadge](https://forthebadge.com/images/badges/built-with-love.svg)](https://forthebadge.com)
 
 [📦 Releases](https://github.com/xiaoyang-sde/reflare/releases) |
-[📔 Examples](#-examples) |
-[⚙️ Route Definition](#-route-definition) |
+[📔 Examples](#examples) |
+[⚙️ Route Definition](#route-definition) |
 [☕ Buy Me a Coffee](https://www.buymeacoffee.com/xiaoyang.liu)
 </div>
 
 🚀 **Reflare** is a lightweight and scalable reverse proxy and load balancing library built for [Cloudflare Workers](https://workers.cloudflare.com). It sits in front of web servers (e.g. web application, storage platform, or RESTful API), forwards HTTP requests or WebSocket traffics from clients to upstream servers, and transforms responses with several optimizations to improve page loading time.
 
-- ⚡ Serverless: Deploy instantly to the auto-scaling serverless platform built by Cloudflare. There's no need to manage virtual machines or containers.
+- ⚡ Serverless: Publish instantly to the auto-scaling serverless platform built by Cloudflare. There's no need to manage virtual machines or containers.
 - ✈️ Load Balancing: Distribute incoming traffics among different upstream services.
-- ⚙️ Hackable: Deliver unique content based on visitor attributes, conduct A/B testing, or build custom middleware to hook into the lifecycle. (Experimental)
-- 🛳️ Dynamic (Experimental): Store and update route definitions with Workers KV to avoid redundant redeployment.
+- ⚙️ Hackable: Deliver unique content based on visitor attributes, conduct A/B testing, or build middlewares to hook into the lifecycle. (Experimental)
+- 🛳️ Dynamic Route Definition (Experimental): Store and update route definitions with Workers KV to avoid redundant redeployment.
 
-## 📦 Installation
+## Installation
 
 ### Start with `reflare-template`
 
-[Install `wrangler` CLI](https://github.com/cloudflare/wrangler#installation) and authorize `wrangler` with a Cloudflare account.
-
-```console
-npm install -g wrangler
-
-wrangler login
-```
-
-Generate a new project from [reflare-template](https://github.com/xiaoyang-sde/reflare-template) and install the dependencies.
+- Generate a new project from [reflare-template](https://github.com/xiaoyang-sde/reflare-template) and install the dependencies.
 
 ```console
 npm init cloudflare reflare-app https://github.com/xiaoyang-sde/reflare-template
@@ -44,20 +36,27 @@ cd reflare-app
 npm install
 ```
 
-Edit or add route definitions in `src/index.ts`. Please read the examples and route definition section below for more details.
+- Authenticate `wrangler` with a Cloudflare account.
 
-- Run `npm run dev` to preview Reflare with local development server provided by [Miniflare](https://miniflare.dev).
-- Run `npm run deploy` to publish Reflare on Cloudflare Workers.
+```console
+npx wrangler login
+```
+
+- Edit or add route definitions in `src/index.ts`. Please read the examples and the documentation below for more details.
+
+- Run `npm run dev` to preview Reflare with a local development server.
+
+- Run `npm run publish` to publish Reflare on Cloudflare Workers.
 
 ### Integrate with existing project
 
-Install the `reflare` package.
+- Install the `reflare` package.
 
 ```console
 npm install reflare
 ```
 
-Import `useReflare` from `reflare`. `useReflare` accepts an object of options.
+Import `useReflare` from `reflare`. `useReflare` accepts these options:
 
 - `provider`: The location of the list of route definitions. (optional, defaults to `static`)
   - `static`: Reflare loads the route definitions from `routeList`.
@@ -73,28 +72,26 @@ Import `useReflare` from `reflare`. `useReflare` accepts an object of options.
 ```ts
 import useReflare from 'reflare';
 
-const handleRequest = async (
-  request: Request,
-): Promise<Response> => {
-  const reflare = await useReflare();
+export default {
+  async fetch(
+    request: Request,
+  ): Promise<Response> {
+    const reflare = await useReflare();
 
-  reflare.push({
-    path: '/*',
-    upstream: {
-      domain: 'httpbin.org',
-      protocol: 'https',
-    },
-  });
+    reflare.push({
+      path: '/*',
+      upstream: {
+        domain: 'httpbin.org',
+        protocol: 'https',
+      },
+    });
 
-  return reflare.handle(request);
+    return reflare.handle(request);
+  },
 };
-
-addEventListener('fetch', (event) => {
-  event.respondWith(handleRequest(event.request));
-});
 ```
 
-Edit the route definition to change the behavior of Reflare. For example, the route definition below lets Reflare add the `Access-Control-Allow-Origin: *` header to each response from the upstream service.
+Edit the route definition to change the behavior of Reflare. For example, the route definition below lets Reflare add the `access-control-allow-origin: *` header to each response from the upstream service.
 
 ```ts
 {
@@ -109,9 +106,9 @@ Edit the route definition to change the behavior of Reflare. For example, the ro
 }
 ```
 
-## 📔 Example
+## Examples
 
-### MDN Web Docs Mirror
+### Mirror of MDN Web Docs
 
 Set up a reverse proxy for [MDN Web Docs](https://developer.mozilla.org):
 
@@ -125,9 +122,9 @@ Set up a reverse proxy for [MDN Web Docs](https://developer.mozilla.org):
 }
 ```
 
-### WebSocket Proxy
+### WebSocket
 
-Reflare could proxy WebSocket traffic to upstream services. Set up a reverse proxy for [wss://echo.websocket.org](wss://echo.websocket.org):
+Set up a reverse proxy for [wss://echo.websocket.org](wss://echo.websocket.org):
 
 ```ts
 {
@@ -139,9 +136,9 @@ Reflare could proxy WebSocket traffic to upstream services. Set up a reverse pro
 }
 ```
 
-### S3 Bucket with custom response headers
+### S3 Bucket
 
-Reflare could set custom headers to the request and response. Set up a reverse proxy for [https://example.s3.amazonaws.com](https://example.s3.amazonaws.com):
+Set up a reverse proxy for [https://example.s3.amazonaws.com](https://example.s3.amazonaws.com) and add custom headers to the response:
 
 ```ts
 {
@@ -165,7 +162,7 @@ Reflare could set custom headers to the request and response. Set up a reverse p
 }
 ```
 
-## ⚙️ Route Definition
+## Route Definition
 
 ### Route Matching
 
@@ -383,15 +380,6 @@ reflare.push({
 });
 ```
 
-### Optimization
-
-Cloudflare Workers provides several optimizations by default.
-
-- [Brotli](https://brotli.org/): Speed up page load times for visitors’ HTTPS traffic by applying Brotli compression.
-- [HTTP/2](https://developers.google.com/web/fundamentals/performance/http2): Improve page load time by connection multiplexing, header compression, and server push.
-- [HTTP/3 with QUIC](https://en.wikipedia.org/wiki/HTTP/3): Accelerate HTTP requests by using QUIC, which provides encryption and performance improvements compared to TCP and TLS.
-- [0-RTT Connection Resumption](https://blog.cloudflare.com/introducing-0-rtt/): Improve performance for clients who have previously connected to the website.
-
 ## 🛳️ Dynamic Route Definition (Experimental)
 
 Reflare could load the route definitions from Workers KV. Set the `provider` to `kv` and `namespace` to a Workers KV namespace (e.g. `REFLARE`) that binds to the current Worker. Reflare fetches the route definitions from `namespace` and handles each incoming request with the latest route definitions.
@@ -401,19 +389,18 @@ import useReflare from 'reflare';
 
 declare const REFLARE: KVNamespace;
 
-const handleRequest = async (
-  request: Request,
-): Promise<Response> => {
-  const reflare = await useReflare({
-    provider: 'kv',
-    namespace: REFLARE,
-  });
-  return reflare.handle(request);
-};
+export default {
+  async fetch(
+    request: Request,
+  ): Promise<Response> {
+    const reflare = await useReflare({
+      provider: 'kv',
+      namespace: REFLARE,
+    });
 
-addEventListener('fetch', (event) => {
-  event.respondWith(handleRequest(event.request));
-});
+    return reflare.handle(request);
+  },
+};
 ```
 
 The route definitions should be stored as a JSON array in the `route-list` key of `namespace`. The KV namespace could be modified with [`wrangler`](https://developers.cloudflare.com/workers/cli-wrangler/commands#kvkey) or [Cloudflare API](https://api.cloudflare.com/#workers-kv-namespace-write-key-value-pair).
@@ -422,10 +409,6 @@ The route definitions should be stored as a JSON array in the `route-list` key o
 wrangler kv:key put --binding=[namespace] 'route-list' '[{"path":"/*","upstream":{"domain":"httpbin.org","protocol":"https"}}]'
 ```
 
-## 🌎 Contributing
-
-- **Request a feature**: Create an issue with the **Feature request** template.
-- **Report bugs**: Create an issue with the **Bug report** template.
-- **Add new feature or fix bugs**: Fork this repository, edit code, and send a pull request.
+## Contributors
 
 [![Contributors](https://contrib.rocks/image?repo=xiaoyang-sde/reflare)](https://github.com/xiaoyang-sde/reflare/graphs/contributors)

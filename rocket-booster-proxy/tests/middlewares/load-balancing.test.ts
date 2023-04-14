@@ -1,7 +1,9 @@
+import { test, expect } from 'vitest';
+
 import useReflare from '../../src';
 import { UpstreamOptions } from '../../types/middlewares';
 
-const upstreamArray: UpstreamOptions[] = [
+const upstream: UpstreamOptions[] = [
   {
     domain: 'javascript.info',
     protocol: 'https',
@@ -35,7 +37,7 @@ test('load-balancing.ts -> ip-hash', async () => {
   const reflare = await useReflare();
   reflare.push({
     path: '/*',
-    upstream: upstreamArray,
+    upstream,
     loadBalancing: {
       policy: 'ip-hash',
     },
@@ -50,7 +52,7 @@ test('load-balancing.ts -> weighted random', async () => {
   const reflare = await useReflare();
   reflare.push({
     path: '/*',
-    upstream: upstreamArray,
+    upstream,
     loadBalancing: {
       policy: 'random',
     },

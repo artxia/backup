@@ -1,12 +1,5 @@
 import { UpstreamOptions } from '../types/middlewares';
 
-export const createResponse = (
-  body: string,
-  status: number,
-): Response => new Response(body, {
-  status,
-});
-
 export const getHostname = (
   request: Request,
 ): string => {
@@ -42,6 +35,6 @@ export const isSameOrigin = (
   return true;
 };
 
-export const convertToArray = <T>(
+export const castToIterable = <T>(
   value: T | T[],
 ): T[] => (Array.isArray(value) ? value : [value]);

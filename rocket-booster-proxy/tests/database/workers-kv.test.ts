@@ -1,6 +1,8 @@
+import { test, expect } from 'vitest';
+
 import { WorkersKV } from '../../src/database';
 
-declare const TEST_NAMESPACE: KVNamespace;
+declare const TEST_NAMESPACE: string;
 
 interface TestInterface {
   string: string;

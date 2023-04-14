@@ -1,5 +1,6 @@
-import { Route } from '.';
 import { UpstreamOptions } from './middlewares/upstream';
+
+import { Route } from '.';
 
 export interface Context {
   route: Route;

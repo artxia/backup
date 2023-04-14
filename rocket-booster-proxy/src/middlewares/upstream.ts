@@ -1,20 +1,8 @@
 import { Middleware } from '../../types/middleware';
-import { UpstreamOptions, ResponseCallback, RequestCallback } from '../../types/middlewares/upstream';
-import { convertToArray } from '../utils';
+import { UpstreamOptions } from '../../types/middlewares/upstream';
+import { castToIterable } from '../utils';
 
-export const cloneRequest = (
-  url: string,
-  request: Request,
-): Request => {
-  const requestInit: RequestInit = {
-    body: request.body,
-    method: request.method,
-    headers: request.headers,
-  };
-  return new Request(url, requestInit);
-};
-
-export const getURL = (
+export const rewriteURL = (
   url: string,
   upstream: UpstreamOptions,
 ): string => {
@@ -57,39 +45,27 @@ export const useUpstream: Middleware = async (
     return;
   }
 
-  const url = getURL(
+  const url = rewriteURL(
     request.url,
     upstream,
   );
+  context.request = new Request(url, context.request);
 
-  const onRequest = upstream.onRequest
-    ? convertToArray<RequestCallback>(upstream.onRequest)
-    : null;
-
-  const onResponse = upstream.onResponse
-    ? convertToArray<ResponseCallback>(upstream.onResponse)
-    : null;
-
-  let upstreamRequest = cloneRequest(url, request);
-
-  if (onRequest) {
-    upstreamRequest = onRequest.reduce(
-      (prevRequest: Request, fn: RequestCallback) => fn(cloneRequest(url, prevRequest), url),
-      upstreamRequest,
+  if (upstream.onRequest) {
+    const onRequest = castToIterable(upstream.onRequest);
+    context.request = onRequest.reduce(
+      (reducedRequest, fn) => fn(reducedRequest, url),
+      request,
     );
   }
 
-  context.response = await fetch(upstreamRequest);
-
-  if (onResponse) {
+  context.response = (await fetch(context.request)).clone();
+  if (upstream.onResponse) {
+    const onResponse = castToIterable(upstream.onResponse);
     context.response = onResponse.reduce(
-      (
-        prevResponse: Response,
-        fn: ResponseCallback,
-      ) => fn(new Response(prevResponse.body, prevResponse), url),
-      new Response(context.response.body, context.response),
+      (reducedResponse, fn) => fn(reducedResponse, url),
+      context.response,
     );
   }
-
   await next();
 };

@@ -1,6 +1,7 @@
 import { Middleware } from '../../types/middleware';
-import { UpstreamOptions } from '../../types/middlewares/upstream';
 import { LoadBalancingHandler, LoadBalancingPolicy } from '../../types/middlewares/load-balancing';
+import { UpstreamOptions } from '../../types/middlewares/upstream';
+import { castToIterable } from '../utils';
 
 const validateUpstream = (
   upstream: UpstreamOptions,
@@ -68,21 +69,19 @@ export const useLoadBalancing: Middleware = async (
 
   if (upstream === undefined) {
     throw new Error('The required \'upstream\' field in the option object is missing');
-  } else if (Array.isArray(upstream)) {
-    upstream.forEach(validateUpstream);
-  } else {
-    validateUpstream(upstream);
   }
 
-  const upstreamArray = Array.isArray(upstream) ? upstream : [upstream];
+  const upstreamIterable = castToIterable(upstream);
+  upstreamIterable.forEach(validateUpstream);
+
   if (loadBalancing === undefined) {
-    context.upstream = randomHandler(upstreamArray, request);
+    context.upstream = randomHandler(upstreamIterable, request);
     await next();
     return;
   }
 
   const policy = loadBalancing.policy || 'random';
   const policyHandler = handlersMap[policy];
-  context.upstream = policyHandler(upstreamArray, request);
+  context.upstream = policyHandler(upstreamIterable, request);
   await next();
 };

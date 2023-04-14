@@ -1,6 +1,7 @@
+import { test, expect } from 'vitest';
+
 import {
   isSameOrigin,
-  createResponse,
   getHostname,
 } from '../../src/utils';
 import { UpstreamOptions } from '../../types/middlewares/upstream';
@@ -14,16 +15,6 @@ test('utils.ts -> isSameOrigin()', () => {
   const falsyUrl = new URL('https://github.com/test');
   expect(isSameOrigin(truthyUrl, upstream)).toEqual(true);
   expect(isSameOrigin(falsyUrl, upstream)).toEqual(false);
-});
-
-test('utils.ts -> createResponse()', async () => {
-  const response = createResponse(
-    'Test response body',
-    403,
-  );
-  expect(response.status).toEqual(403);
-  expect(response.ok).toEqual(false);
-  await expect(response.text()).resolves.toEqual('Test response body');
 });
 
 test('utils.ts -> getHostname()', () => {
