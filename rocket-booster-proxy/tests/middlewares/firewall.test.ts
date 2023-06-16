@@ -18,7 +18,7 @@ test('firewall.ts -> geolocation rules', async () => {
   const reflare = await useReflare();
   reflare.push({
     path: '/*',
-    upstream: { domain: 'httpbin.org' },
+    upstream: { domain: 'httpbingo.org' },
     firewall: [
       {
         field: 'country',
@@ -36,7 +36,7 @@ test('firewall.ts -> IP address rules (in)', async () => {
   const reflare = await useReflare();
   reflare.push({
     path: '/*',
-    upstream: { domain: 'httpbin.org' },
+    upstream: { domain: 'httpbingo.org' },
     firewall: [
       {
         field: 'ip',
@@ -54,7 +54,7 @@ test('firewall.ts -> IP address rules (match)', async () => {
   const reflare = await useReflare();
   reflare.push({
     path: '/*',
-    upstream: { domain: 'httpbin.org' },
+    upstream: { domain: 'httpbingo.org' },
     firewall: [
       {
         field: 'ip',
@@ -72,7 +72,7 @@ test('firewall.ts -> ip block with contain', async () => {
   const reflare = await useReflare();
   reflare.push({
     path: '/*',
-    upstream: { domain: 'httpbin.org' },
+    upstream: { domain: 'httpbingo.org' },
     firewall: [
       {
         field: 'ip',
@@ -90,7 +90,7 @@ test('firewall.ts -> user-agent rules (not contain)', async () => {
   const reflare = await useReflare();
   reflare.push({
     path: '/*',
-    upstream: { domain: 'httpbin.org' },
+    upstream: { domain: 'httpbingo.org' },
     firewall: [
       {
         field: 'user-agent',
@@ -108,7 +108,7 @@ test('firewall.ts -> invalid operator', async () => {
   const reflare = await useReflare();
   reflare.push({
     path: '/*',
-    upstream: { domain: 'httpbin.org' },
+    upstream: { domain: 'httpbingo.org' },
     firewall: [
       {
         field: 'ip',

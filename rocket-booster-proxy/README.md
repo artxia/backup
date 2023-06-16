@@ -168,12 +168,21 @@ Set up a reverse proxy for [https://example.s3.amazonaws.com](https://example.s3
 
 Reflare implements express-like route matching. Reflare matches the path and HTTP method of each incoming request with the list of route definitions and forwards the request to the first matched route.
 
+- `domain` (`string | string[]`): The domain name or the list of domain names that matches the domain name in the incoming request's URL
 - `path` (`string | string[]`): The path or the list of paths that matches the route
 - `methods` (`string[]`): The list of HTTP methods that match the route
 
 ```ts
 // Matches all requests
 reflare.push({
+  path: '/*',
+  /* ... */
+});
+
+// Matches all requests that are accessing the Cloudflare Workers instance
+// through `template.reflare.workers.dev`
+reflare.push({
+  domain: 'template.reflare.workers.dev',
   path: '/*',
   /* ... */
 });
@@ -215,7 +224,7 @@ reflare.push({
 });
 ```
 
-The `onRequest` and `onResponse` fields accept callback functions that could change the content of the request or response. For example, the following example replaces the URL of the request and sets the `cache-control` header of the response based on its URL. These fields accept either a standalone function or an array of functions that will be executed sequentially.
+The `onRequest` and `onResponse` fields accept callback functions that could change the content of the request or response. For example, the following example replaces the URL of the request and sets the `cache-control` header of the response based on its URL. These fields accept either a standalone function or a list of functions. The function could be either `async` or non-`async`.
 
 ```ts
 reflare.push({

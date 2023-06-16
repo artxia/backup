@@ -8,10 +8,10 @@ import { UpstreamOptions } from '../../types/middlewares/upstream';
 
 test('utils.ts -> isSameOrigin()', () => {
   const upstream: UpstreamOptions = {
-    domain: 'httpbin.org',
+    domain: 'httpbingo.org',
     protocol: 'https',
   };
-  const truthyUrl = new URL('https://httpbin.org/test');
+  const truthyUrl = new URL('https://httpbingo.org/test');
   const falsyUrl = new URL('https://github.com/test');
   expect(isSameOrigin(truthyUrl, upstream)).toEqual(true);
   expect(isSameOrigin(falsyUrl, upstream)).toEqual(false);

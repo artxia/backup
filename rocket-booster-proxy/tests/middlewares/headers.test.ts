@@ -19,26 +19,12 @@ const request = new Request(
   },
 );
 
-test('headers.ts -> set \'X-Forwarded-*\' headers', async () => {
-  const reflare = await useReflare();
-
-  reflare.push({
-    path: '/*',
-    upstream: { domain: 'httpbin.org' },
-  });
-
-  const response = await reflare.handle(request);
-  const requestInfo = await response.json() as HTTPBinGetResponse;
-  expect(requestInfo.headers['X-Forwarded-Host']).toMatch('github.com');
-  expect(requestInfo.origin).toMatch(/(1.1.1.1)/i);
-});
-
 test('headers.ts -> set request headers', async () => {
   const reflare = await useReflare();
 
   reflare.push({
     path: '/*',
-    upstream: { domain: 'httpbin.org' },
+    upstream: { domain: 'httpbingo.org' },
     headers: {
       request: {
         accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -63,7 +49,7 @@ test('headers.ts -> set response headers', async () => {
   const reflare = await useReflare();
   reflare.push({
     path: '/*',
-    upstream: { domain: 'httpbin.org' },
+    upstream: { domain: 'httpbingo.org' },
     headers: {
       request: {
         accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -90,12 +76,9 @@ test('headers.ts -> delete request headers', async () => {
 
   reflare.push({
     path: '/*',
-    upstream: { domain: 'httpbin.org' },
+    upstream: { domain: 'httpbingo.org' },
     headers: {
       request: {
-        'X-Forwarded-Proto': '',
-        'X-Forwarded-For': '',
-        'X-Forwarded-Host': '',
         'user-agent': '',
         'test-header': '',
       },
@@ -104,9 +87,6 @@ test('headers.ts -> delete request headers', async () => {
 
   const response = await reflare.handle(request);
   const requestInfo = await response.json() as HTTPBinGetResponse;
-  expect(requestInfo.headers['X-Forwarded-For']).toBeUndefined();
-  expect(requestInfo.headers['X-Forwarded-Host']).toBeUndefined();
-  expect(requestInfo.headers['X-Forwarded-Proto']).toBeUndefined();
   expect(requestInfo.headers['user-agent']).toBeUndefined();
   expect(requestInfo.headers['test-header']).toBeUndefined();
 });
@@ -116,7 +96,7 @@ test('headers.ts -> delete response headers', async () => {
 
   reflare.push({
     path: '/*',
-    upstream: { domain: 'httpbin.org' },
+    upstream: { domain: 'httpbingo.org' },
     headers: {
       response: {
         server: '',

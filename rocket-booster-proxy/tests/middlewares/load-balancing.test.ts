@@ -10,7 +10,7 @@ const upstream: UpstreamOptions[] = [
     weight: 0,
   },
   {
-    domain: 'httpbin.org',
+    domain: 'httpbingo.org',
     protocol: 'https',
     weight: 1,
   },
@@ -45,7 +45,7 @@ test('load-balancing.ts -> ip-hash', async () => {
 
   const response = await reflare.handle(request);
   expect(response.status).toBe(200);
-  expect(response.url).toBe('https://httpbin.org/get');
+  expect(response.url).toBe('https://httpbingo.org/get');
 });
 
 test('load-balancing.ts -> weighted random', async () => {
@@ -60,5 +60,5 @@ test('load-balancing.ts -> weighted random', async () => {
 
   const response = await reflare.handle(request);
   expect(response.status).toBe(200);
-  expect(response.url).toBe('https://httpbin.org/get');
+  expect(response.url).toBe('https://httpbingo.org/get');
 });

@@ -1,5 +1,7 @@
-export type RequestCallback = (request: Request, url: string) => Request;
-export type ResponseCallback = (response: Response, url: string) => Response;
+export type RequestCallback = ((request: Request, url: string) => Request)
+| ((request: Request, url: string) => Promise<Request>);
+export type ResponseCallback = ((response: Response, url: string) => Response)
+| ((response: Response, url: string) => Promise<Response>);
 
 export interface UpstreamOptions {
   domain: string;

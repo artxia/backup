@@ -8,12 +8,12 @@ test('upstream.ts -> upstream', async () => {
   const reflare = await useReflare();
   reflare.push({
     path: '/*',
-    upstream: { domain: 'httpbin.org' },
+    upstream: { domain: 'httpbingo.org' },
   });
 
   const response = await reflare.handle(request);
   expect(response.status).toBe(200);
-  expect(response.url).toBe('https://httpbin.org/get');
+  expect(response.url).toBe('https://httpbingo.org/get');
 });
 
 test('upstream.ts -> onRequest', async () => {
@@ -23,15 +23,17 @@ test('upstream.ts -> onRequest', async () => {
   reflare.push({
     path: '/foo*',
     upstream: {
-      domain: 'httpbin.org',
-      onRequest: (_, url) => new Request(url.replace('foo/bar', 'get')),
+      domain: 'httpbingo.org',
+      onRequest: [
+        (_, url) => new Request(url.replace('foo/bar', 'get')),
+      ],
     },
   });
 
   const response = await reflare.handle(request);
 
   expect(response.status).toBe(200);
-  expect(response.url).toBe('https://httpbin.org/get');
+  expect(response.url).toBe('https://httpbingo.org/get');
 });
 
 test('upstream.ts -> onResponse', async () => {
@@ -41,13 +43,13 @@ test('upstream.ts -> onResponse', async () => {
   reflare.push({
     path: '/foo*',
     upstream: {
-      domain: 'httpbin.org',
+      domain: 'httpbingo.org',
       onResponse: [
         (response) => {
           response.headers.set('x-response-header', 'test');
           return response;
         },
-        (response) => {
+        async (response) => {
           response.headers.set('content-length', '0');
           return response;
         },
@@ -60,16 +62,38 @@ test('upstream.ts -> onResponse', async () => {
   expect(response.headers.get('content-length')).toEqual('0');
 });
 
-test('upstream.ts -> with collection of paths', async () => {
+test('upstream.ts -> multiple paths', async () => {
   const request = new Request('https://localhost/get');
 
   const reflare = await useReflare();
   reflare.push({
     path: ['/foo', '/bar', '/get'],
-    upstream: { domain: 'httpbin.org' },
+    upstream: { domain: 'httpbingo.org' },
   });
 
   const response = await reflare.handle(request);
   expect(response.status).toBe(200);
-  expect(response.url).toBe('https://httpbin.org/get');
+  expect(response.url).toBe('https://httpbingo.org/get');
+});
+
+test('upstream.ts -> domain', async () => {
+  const reflare = await useReflare();
+  reflare.push({
+    domain: 'example.com',
+    path: '/*',
+    upstream: { domain: 'httpbingo.org' },
+  });
+
+  {
+    const request = new Request('https://example.com/get');
+    const response = await reflare.handle(request);
+    expect(response.status).toBe(200);
+    expect(response.url).toBe('https://httpbingo.org/get');
+  }
+
+  {
+    const request = new Request('https://test.com/get');
+    const response = await reflare.handle(request);
+    expect(response.status).toBe(500);
+  }
 });

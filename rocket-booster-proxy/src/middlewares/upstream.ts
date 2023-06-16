@@ -53,19 +53,17 @@ export const useUpstream: Middleware = async (
 
   if (upstream.onRequest) {
     const onRequest = castToIterable(upstream.onRequest);
-    context.request = onRequest.reduce(
-      (reducedRequest, fn) => fn(reducedRequest, url),
-      request,
-    );
+    for await (const fn of onRequest) {
+      context.request = await fn(context.request, url);
+    }
   }
 
   context.response = (await fetch(context.request)).clone();
   if (upstream.onResponse) {
     const onResponse = castToIterable(upstream.onResponse);
-    context.response = onResponse.reduce(
-      (reducedResponse, fn) => fn(reducedResponse, url),
-      context.response,
-    );
+    for await (const fn of onResponse) {
+      context.response = await fn(context.response, url);
+    }
   }
   await next();
 };

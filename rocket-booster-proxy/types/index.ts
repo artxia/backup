@@ -7,6 +7,7 @@ import {
 } from './middlewares';
 
 export interface Route {
+  domain?: string | string[];
   path: string | string[];
   upstream: UpstreamOptions | UpstreamOptions[];
   firewall?: FirewallOptions[];
