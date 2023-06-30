@@ -321,7 +321,7 @@ const getCleanData = async () => {
       },
     },
   ];
-  const result = await linksOld1.aggregate(agg);
+  const result = await links.aggregate(agg);
   // const result2 = await checkTimeFromLast();
   return result.map(i => `${i._id.replace(/\./g, '_')} ${i.cnt}`);
 };
