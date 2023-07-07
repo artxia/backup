@@ -13,14 +13,18 @@ const blacklistFile = path.join(__dirname, '../../.conf/blacklist.txt');
 if (!fs.existsSync(blacklistFile)) {
   fs.writeFileSync(`${confFile}/blacklist.txt`, '');
 }
-
-if (fs.existsSync(envPath)) {
-  dotenv.config({
-    allowEmptyValues: true,
-    path: envPath,
-    sample: path.join(__dirname, '../../.env.example'),
-  });
+if (!fs.existsSync(envPath)) {
+  console.log(
+    'PLEASE CREATE .env file with params, for more info see .env.example',
+  );
+  process.exit('1');
 }
+
+dotenv.config({
+  allowEmptyValues: true,
+  path: envPath,
+  sample: path.join(__dirname, '../../.env.example'),
+});
 
 module.exports = {
   root: path.join(__dirname, '/../../'),
@@ -31,4 +35,5 @@ module.exports = {
   },
   blacklistFile,
   puppetQue: process.env.TASKSPUPPET_DEV || 'puppet',
+  BOT_USERNAME: process.env.BOT_USERNAME || '_no_username',
 };

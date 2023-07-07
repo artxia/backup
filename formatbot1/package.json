@@ -7,7 +7,8 @@
   "private": false,
   "license": "MIT",
   "engines": {
-    "yarn": "*"
+    "yarn": "*",
+    "node": ">=18.0.0"
   },
   "scripts": {
     "precommit": "yarn lint",
@@ -26,11 +27,12 @@
     "eslint"
   ],
   "dependencies": {
-    "@postlight/mercury-parser": "^2.2.0",
+    "@mozilla/readability": "^0.4.4",
+    "@postlight/parser": "^2.2.3",
     "amqplib": "^0.10.3",
     "atob": "^2.1.2",
     "co": "^4.6.0",
-    "cron": "^1.8.2",
+    "cron": "^2.3.1",
     "dayjs": "^1.10.7",
     "dotenv-safe": "^8.2.0",
     "express": "^4.17.1",
@@ -39,12 +41,12 @@
     "is-url": "^1.2.4",
     "isomorphic-fetch": "^3.0.0",
     "jsbn": "^1.1.0",
-    "jsdom": "^16.7.0",
+    "jsdom": "^22.1.0",
     "lodash": "^4.17.21",
     "mongoose": "^6.8.0",
     "node-fetch": "^2.6.5",
     "nodemon": "^2.0.12",
-    "puppeteer": "^10.2.0",
+    "puppeteer": "^20.7.4",
     "sanitize-html": "^2.8.0",
     "showdown": "^1.9.1",
     "statuses": "^2.0.1",
@@ -54,8 +56,8 @@
     "wget-improved": "^3.2.1"
   },
   "devDependencies": {
+    "@babel/eslint-parser": "^7.22.6",
     "ava": "^3.15.0",
-    "babel-eslint": "^10.1.0",
     "eslint": "^7.32.0",
     "eslint-config-airbnb-base": "^14.2.1",
     "eslint-config-prettier": "^8.3.0",

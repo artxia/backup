@@ -1,9 +1,10 @@
 const {chunk} = require('lodash');
 const fetch = require('isomorphic-fetch');
 
-const {toDom} = require('./dom');
+const {toDomNode} = require('./dom');
 const {timeout} = require('./index');
 const logger = require('./logger');
+const {BOT_USERNAME} = require('../../config/vars');
 
 const MAX_LENGHT_CONTENT = 65000;
 let pages = 0;
@@ -53,7 +54,7 @@ const makeLink = (obj, dom, link, index) => {
     }
     if (link) {
       const nextBtn = `<p><br /><br /><a href="${link}">Read Next page</a></p>`;
-      dom.push(...toDom(nextBtn)[0].children);
+      dom.push(...toDomNode(nextBtn)[0].children);
     }
     content = JSON.stringify(dom);
     logger(content, `page${index}.json`);
@@ -99,7 +100,7 @@ const makeTelegaphMany = async (obj, domObj, chunksLen) => {
   return link;
 };
 
-const makeTelegaph = async (objParam, parsedHtml) => {
+const makeTelegraph = async (objParam, parsedHtml) => {
   const obj = objParam;
   if (obj.title && obj.title.length > 256) {
     obj.title = obj.title.substring(0, 256);
@@ -109,13 +110,13 @@ const makeTelegaph = async (objParam, parsedHtml) => {
       obj.title = obj.title.substring(0, 512);
     }
   } else {
-    obj.author_url = 'https://t.me/corsabot';
+    obj.author_url = `https://t.me/${BOT_USERNAME}`;
   }
   if (obj.author_name && obj.author_name.length > 128) {
     obj.title = obj.title.substring(0, 128);
   }
   let telegraphLink = '';
-  let domEd = toDom(parsedHtml);
+  let domEd = toDomNode(parsedHtml);
   if (!domEd) {
     throw new Error('empty dom');
   }
@@ -147,4 +148,4 @@ const makeTelegaph = async (objParam, parsedHtml) => {
   };
 };
 
-module.exports = makeTelegaph;
+module.exports = makeTelegraph;
