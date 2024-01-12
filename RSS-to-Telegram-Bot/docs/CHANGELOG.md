@@ -4,7 +4,27 @@
 
 ### Enhancements
 
-- **Set niceness for subprocesses/threads**: (Unix only) Nice subprocesses and/or threads to improve the responsiveness of the main process.
+- **Strip whitespaces in `<li>`**: Strip whitespaces (including linebreaks) in `<li>` (list item) to improve readability. Only the leading and trailing whitespaces (including linebreaks) are stripped.
+- **Only set "force reply" in groups**: Only set `ReplyKeyboardForceReply` to `True` in groups. Previously, it was also set in private chats. See also "Bug fixes" below.
+
+### Bug fixes
+
+- **(`/sub`) "force reply" not cleared**: Both `/sub` and `/import` set `ReplyKeyboardForceReply` to `True` to force the user to reply to the bot. However, due to a bug of Telegram, it keeps effective even if the user has made a reply, making the reply bar always reappear. Previously, a workaround has been applied to `/import` by deleting the prompt message containing `ReplyKeyboardForceReply` after the user has made a reply (see also [#170](https://github.com/Rongronggg9/RSS-to-Telegram-Bot/issues/170)). But `/sub` was forgotten at that time. Now the workaround has been applied to `/sub` too.
+
+## v2.5.0: Responsiveness improvement, tiny enhancements and fixes
+
+### Addition
+
+- **Set niceness for subprocesses/threads**: (Unix only) Nice subprocesses and/or threads to improve the responsiveness of the main process. This is tunable via the environment variable `EXECUTOR_NICENESS_INCREMENT`.
+
+### Enhancements
+
+- **HTML list support improvement**: Now `<menu>` and `<dir>` are treated the same as `<ul>` (unordered list). In addition, orphan `<li>` (list item) without a valid list parent tag are no longer ignored but treated as an item in an single unordered list.
+
+### Bug fixes
+
+- **Stay in topic group even when the "General" topic is closed**: Now that topic groups are not fully supported, the bot can only send messages in the "General" topic. Previously, the bot would only send an error message to the bot manager if the "General" topic is closed. Now the bot will leave the topic group, without disturbing the bot manager, if the "General" topic is closed. This is a temporary limitation before topic groups are fully supported.
+- **v2.4.1 not released to PyPI**: Due to a previous mistake, v2.4.1 could not be released to PyPI. v2.5.0 fixes the mistake and is released to PyPI. 
 
 ## v2.4.1: Minor enhancements, bug fixes, and Happy New Year!
 
