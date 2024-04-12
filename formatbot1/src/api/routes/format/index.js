@@ -2,47 +2,61 @@ const url = require('url');
 
 const keyboards = require('../../../keyboards/keyboards');
 const messages = require('../../../messages/format');
+const {validRegex} = require('../../../config/config.json');
+const rabbitMq = require('../../../service/rabbitmq');
+
+const {
+  PUPPET_QUE,
+  IS_PUPPET_DISABLED,
+  NO_MQ,
+  TG_BUGS_GROUP,
+  TG_GROUP,
+  IV_MAKING_TIMEOUT,
+  IV_CHAN_ID,
+  IV_CHAN_MID,
+  USER_IDS,
+  HELP_MESSAGE,
+} = require('../../../config/vars');
+
 const db = require('../../utils/db');
+const {
+  check,
+  timeout,
+  checkData,
+  parseEnvArray,
+  toUrl
+} = require('../../utils');
 const logger = require('../../utils/logger');
 const ivMaker = require('../../utils/ivMaker');
 const puppet = require('../../utils/puppet');
+const {
+  getAllLinks,
+  getLinkFromEntity,
+  getLink
+} = require('../../utils/links');
 
-const {check, timeout, checkData} = require('../../utils');
-const {getAllLinks, getLinkFromEntity, getLink} = require('../../utils/links');
+const group = TG_GROUP;
+const groupBugs = TG_BUGS_GROUP;
 
-const {validRegex} = require('../../../config/config.json');
-
-const rabbitmq = require('../../../service/rabbitmq');
-const {puppetQue} = require('../../../config/vars');
-
-const group = process.env.TGGROUP;
-const groupBugs = process.env.TGGROUPBUGS;
-
-const IV_MAKING_TIMEOUT = +(process.env.IV_MAKING_TIMEOUT || 60);
-const IV_CHAN_ID = +process.env.IV_CHAN_ID;
-const IV_CHAN_MID = +process.env.IV_CHAN_MID;
-const USER_IDS = (process.env.USERIDS || '').split(',');
+const IV_TIMEOUT = +(IV_MAKING_TIMEOUT || 60);
+const userIds = (USER_IDS || '').split(',');
 const TIMEOUT_EXCEEDED = 'timedOut';
-
-const HELP_MESSAGE = process.env.HELP_MESSAGE || '';
 
 global.lastIvTime = +new Date();
 
-const supportLinks = [process.env.SUP_LINK];
+const supportLinks = parseEnvArray('SUP_LINK');
 
-for (let i = 1; i < 10; i += 1) {
-  if (process.env[`SUP_LINK${i}`]) {
-    supportLinks.push(process.env[`SUP_LINK${i}`]);
-  }
+if (!NO_MQ) {
+  rabbitMq.startFirst();
 }
-rabbitmq.startFirst();
+
 const support = async (ctx, botHelper) => {
   let system = JSON.stringify(ctx.message.from);
   const {
     chat: {id: chatId},
   } = ctx.message;
 
-  if (USER_IDS.length && USER_IDS.includes(`${chatId}`)) {
+  if (userIds.length && userIds.includes(`${chatId}`)) {
     return;
   }
   try {
@@ -53,8 +67,11 @@ const support = async (ctx, botHelper) => {
       parse_mode: botHelper.markdown(),
     });
 
-    if (IV_CHAN_MID) {
-      botHelper.forward(IV_CHAN_MID, IV_CHAN_ID * -1, chatId).catch(() => {});
+    if (!Number.isNaN(IV_CHAN_MID)) {
+      botHelper
+        .forwardMes(IV_CHAN_MID, IV_CHAN_ID * -1, chatId)
+        .catch(() => {
+        });
     }
   } catch (e) {
     system = `${e}${system}`;
@@ -67,14 +84,14 @@ const startOrHelp = (ctx, botHelper) => {
     const {
       chat: {id: chatId},
     } = ctx.message;
-    if (USER_IDS.length && USER_IDS.includes(`${chatId}`)) {
+    if (userIds.length && userIds.includes(`${chatId}`)) {
       return;
     }
   } else {
     const {
       chat: {id: chatId},
     } = ctx.message;
-    if (USER_IDS.length && USER_IDS.includes(`${chatId}`)) {
+    if (userIds.length && userIds.includes(`${chatId}`)) {
       return;
     }
   }
@@ -144,9 +161,12 @@ const format = (bot, botHelper, skipCountBool) => {
         is_personal: true,
         input_message_content: {message_text: 'Links not found'},
       };
-      return msg.answerInlineQuery([res]).catch(() => {});
+      return msg.answerInlineQuery([res])
+        .catch(() => {
+        });
     }
-    const ivObj = await db.getIV(links[0]).catch(() => false);
+    const ivObj = await db.getIV(links[0])
+      .catch(() => false);
     if (ivObj && ivObj.iv) {
       return botHelper
         .sendInline({
@@ -155,15 +175,16 @@ const format = (bot, botHelper, skipCountBool) => {
         })
         .catch(e => logger(e));
     }
-    const exist = await db.getInine(links[0]).catch(() => false);
+    const exist = await db.getInine(links[0])
+      .catch(() => false);
     const res = {
       type: 'article',
       id,
-      title: "Waiting for InstantView... Type 'Any symbol' to check",
+      title: 'Waiting for InstantView... Type \'Any symbol\' to check',
       input_message_content: {message_text: links[0]},
     };
     if (!exist) {
-      rabbitmq.addToQueue({
+      rabbitMq.addToChannel({
         message_id: id,
         chatId: msg.from.id,
         link: links[0],
@@ -175,7 +196,8 @@ const format = (bot, botHelper, skipCountBool) => {
         cache_time: 60,
         is_personal: true,
       })
-      .catch(() => {});
+      .catch(() => {
+      });
   });
 
   bot.action(/.*/, async ctx => {
@@ -185,13 +207,17 @@ const format = (bot, botHelper, skipCountBool) => {
     if (s) {
       const {message} = ctx.update.callback_query;
       // eslint-disable-next-line camelcase
-      const {message_id, chat, entities} = message;
+      const {
+        message_id,
+        chat,
+        entities
+      } = message;
       const actionMessage = {
         message_id,
         chatId: chat.id,
         link: entities[1].url,
       };
-      rabbitmq.addToQueue(actionMessage, puppetQue);
+      rabbitMq.addToChannel(actionMessage, PUPPET_QUE);
       return;
     }
     const resolveDataMatch = data.match(/^r_([0-9]+)_([0-9]+)/);
@@ -210,13 +236,17 @@ const format = (bot, botHelper, skipCountBool) => {
       } = ctx;
       const {
         // eslint-disable-next-line camelcase
-        message: {text, message_id},
+        message: {
+          text,
+          message_id
+        },
         from, // eslint-disable-next-line camelcase
       } = callback_query;
       const RESULT = `${text}\nResolved! ${error}`;
       await bot.telegram
         .editMessageText(from.id, message_id, null, RESULT)
-        .catch(() => {});
+        .catch(() => {
+        });
     }
   });
 
@@ -237,8 +267,11 @@ const format = (bot, botHelper, skipCountBool) => {
       message = update.channel_post;
     }
 
-    const {reply_to_message: rplToMsg, caption_entities: cEntities} =
-      message || {};
+    const {
+      reply_to_message: rplToMsg,
+      caption_entities: cEntities
+    } =
+    message || {};
     if (rplToMsg || message.audio) {
       return;
     }
@@ -274,12 +307,22 @@ const format = (bot, botHelper, skipCountBool) => {
       }
       link = getLink(links);
       if (!link) return;
-
-      const parsed = url.parse(link);
+      let parsed;
+      if (link) {
+        link = toUrl(link);
+      }
+      try {
+        parsed = new url.URL(link);
+      } catch (e) {
+        logger('exit wrong url');
+        return;
+      }
+      logger(parsed)
       if (link.match(/^(https?:\/\/)?(www.)?google/)) {
         const l = link.match(/url=(.*?)($|&)/);
         if (l && l[1]) link = decodeURIComponent(l[1]);
       }
+
       if (link.match(new RegExp(validRegex))) {
         ctx
           .reply(messages.showIvMessage('', link, link), {
@@ -291,16 +334,22 @@ const format = (bot, botHelper, skipCountBool) => {
       if (link.match(/^((https?):\/\/)?(www\.)?(youtube|t)\.(com|me)\/?/)) {
         return;
       }
+
       if (link.match(/yandex\.ru\/showcap/)) {
         return;
       }
-      if (!parsed.pathname) {
+
+      // allow https only main page
+      if (!parsed.pathname && !parsed.protocol.match('https')) {
         return;
       }
+
       let mid;
       if (!botHelper.waitSec) {
         const res =
-          (await ctx.reply('Waiting for instantView...').catch(() => {})) || {};
+          (await ctx.reply('Waiting for instantView...')
+            .catch(() => {
+            })) || {};
         const messageId = res && res.message_id;
         await timeout(0.1);
         if (!messageId) {
@@ -323,45 +372,64 @@ const format = (bot, botHelper, skipCountBool) => {
         global.lastIvTime = +new Date();
         botHelper.sendAdmin(`alert ${newIvTime} sec`);
       }
-      if (!process.env.MESSAGE_QUEUE) {
+      if (NO_MQ) {
         console.log('cloud massaging is disabled');
         // eslint-disable-next-line consistent-return
         return jobMessage(task);
       }
-      rabbitmq.addToQueue(task);
+      rabbitMq.addToChannel(task);
     }
   };
 
   bot.on('channel_post', ctx =>
-    addToQueue(ctx).catch(e =>
-      botHelper.sendError(`tg err1: ${JSON.stringify(e)}`),
-    ),
+    addToQueue(ctx)
+      .catch(e =>
+        botHelper.sendError(`tg err1: ${JSON.stringify(e)}`),
+      ),
   );
 
   bot.hears(/.*/, ctx =>
-    addToQueue(ctx).catch(e =>
-      botHelper.sendError(`tg err2: ${JSON.stringify(e)}`),
-    ),
+    addToQueue(ctx)
+      .catch(e =>
+        botHelper.sendError(`tg err2: ${JSON.stringify(e)}`),
+      ),
   );
 
   bot.on('message', ctx =>
-    addToQueue(ctx).catch(e =>
-      botHelper.sendError(`tg err3: ${JSON.stringify(e)}`),
-    ),
+    addToQueue(ctx)
+      .catch(e =>
+        botHelper.sendError(`tg err3: ${JSON.stringify(e)}`),
+      ),
   );
 
   let browserWs = null;
-  if (!botHelper.config.no_puppet && !process.env.NOPUPPET) {
-    puppet.getBrowser().then(ws => {
-      browserWs = ws;
-    });
+  if (!botHelper.config.no_puppet && !IS_PUPPET_DISABLED) {
+    puppet.getBrowser()
+      .then(ws => {
+        browserWs = ws;
+      });
   }
   const jobMessage = async task => {
-    const {chatId, message_id: messageId, q, force, isChanMesId, inline} = task;
+    const {
+      chatId,
+      message_id: messageId,
+      q,
+      force,
+      isChanMesId,
+      inline,
+      w: isWorker,
+    } = task;
+
     let {link} = task;
+
     if (link.match(/^https?:\/\/t\.me\//)) {
       return;
     }
+
+    if (isWorker) {
+      // TODO
+    }
+
     let error = '';
     let isBroken = false;
     const resolveMsgId = false;
@@ -383,14 +451,19 @@ const format = (bot, botHelper, skipCountBool) => {
       let successIv = false;
       try {
         logger(`queue job ${q}`);
-        let params = rabbitmq.getParams(q);
+        let params = rabbitMq.getMqParams(q);
         const isAdm = botHelper.isAdmin(chatId);
+        logger(`isAdm = ${isAdm}`);
+        logger(`force = ${force}`);
         if (isAdm) {
           params.isadmin = true;
         }
-        rabbitmq.timeStart(q);
+        rabbitMq.timeStart(q);
         link = ivMaker.parse(link);
-        const {isText, url: baseUrl} = await ivMaker
+        const {
+          isText,
+          url: baseUrl
+        } = await ivMaker
           .isText(link, force)
           .catch(e => {
             logger(e);
@@ -405,7 +478,7 @@ const format = (bot, botHelper, skipCountBool) => {
           global.emptyTextCount = (global.emptyTextCount || 0) + 1;
         } else {
           global.emptyTextCount = 0;
-          const IV_LIMIT = isAdm ? 120 : IV_MAKING_TIMEOUT;
+          const IV_LIMIT = isAdm ? 120 : IV_TIMEOUT;
           const {hostname} = url.parse(link);
           checkData(hostname.match('djvu'));
           clearInterval(skipTimer);
@@ -420,6 +493,9 @@ const format = (bot, botHelper, skipCountBool) => {
           params = {...params, ...botParams};
           params.browserWs = browserWs;
           params.db = botHelper.db !== false;
+          if (force === 'nodb' && isAdm) {
+            params.db = false;
+          }
           await timeout(0.2);
           const ivTask = ivMaker.makeIvLink(link, params);
           const ivTimer = new Promise(resolve => {
@@ -431,16 +507,17 @@ const format = (bot, botHelper, skipCountBool) => {
             }, 1000);
             timeoutRes = setTimeout(resolve, IV_LIMIT * 1000, TIMEOUT_EXCEEDED);
           });
-          await Promise.race([ivTimer, ivTask]).then(value => {
-            if (value === TIMEOUT_EXCEEDED) {
-              if (groupBugs) {
-                botHelper.sendAdmin(`timedOut ${link}`, groupBugs);
+          await Promise.race([ivTimer, ivTask])
+            .then(value => {
+              if (value === TIMEOUT_EXCEEDED) {
+                if (groupBugs) {
+                  botHelper.sendAdmin(`timedOut ${link}`, groupBugs);
+                }
+                timeOutLink = true;
+              } else {
+                linkData = value;
               }
-              timeOutLink = true;
-            } else {
-              linkData = value;
-            }
-          });
+            });
           clearInterval(skipTimer);
           clearTimeout(timeoutRes);
         }
@@ -476,12 +553,12 @@ const format = (bot, botHelper, skipCountBool) => {
           TITLE = '';
           RESULT = messages.timeOut();
         } else {
-          RESULT = messages.broken(link, HELP_MESSAGE);
+          RESULT = messages.broken(link, HELP_MESSAGE || '');
         }
         successIv = false;
         error = `broken ${link} ${e}`;
       }
-      const durationTime = rabbitmq.time(q);
+      const durationTime = rabbitMq.time(q);
       if (global.emptyTextCount > 10) {
         botHelper.sendAdmin('@admin need to /restartApp');
       }
@@ -559,7 +636,7 @@ const format = (bot, botHelper, skipCountBool) => {
   };
 
   try {
-    rabbitmq.runMqChannels(jobMessage);
+    rabbitMq.runMqChannels(jobMessage);
   } catch (e) {
     botHelper.sendError(e);
   }
