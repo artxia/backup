@@ -27,8 +27,16 @@
 
 [Channels Using RSStT]: docs/channels-using-rsstt.md
 
-
-**Important**: If you have your own RSStT bot (v1), please read the [migration guide](docs/migration-guide-v2.md) to learn how to migrate to v2.
+<table>
+    <tr>
+        <td><img src="docs/resources/example5.png" alt="Screenshot"></td>
+        <td rowspan="2"><img src="docs/resources/example7.png" alt="Screenshot"></td>
+        <td rowspan="2"><img src="docs/resources/example8.png" alt="Screenshot"></td>
+    </tr>
+    <tr>
+        <td><img src="docs/resources/example6.png" alt="Screenshot"></td>
+    </tr>
+</table>
 
 ## Highlights
 
@@ -46,7 +54,8 @@
     - Automatically determine whether the title of the RSS feed is auto-filled, if so, omit the title (customizable)
     - Automatically show the author-name (customizable)
     - Automatically split too-long messages
-        - If configured Telegraph, the message will be sent via Telegraph (customizable)
+    - Messages can be sent as Telegraph posts (customizable)
+      - Most images and videos will be uploaded to Telegraph, so that Instant View will load rapidly
 - [Various customizable formatting settings](docs/formatting-settings.md)
     - Hashtags, custom title, etc.
 - Individual proxy settings for Telegram and RSS feeds
@@ -55,20 +64,17 @@
 - User-friendly
 - HTTP Caching
 
-<img src="docs/resources/example1.png" width = "300" alt=""/><img src="docs/resources/example3.png" width = "300" alt=""/><img src="docs/resources/example4.png" width = "300" alt=""/>
-
 ## Deployment
+
+[![dockeri.co](https://dockerico.blankenship.io/image/rongronggg9/rss-to-telegram)](https://hub.docker.com/r/rongronggg9/rss-to-telegram)\
+[![Build status (master)](https://img.shields.io/github/actions/workflow/status/Rongronggg9/RSS-to-Telegram-Bot/publish-docker-image.yml?branch=master&label=build&logo=docker)](https://github.com/Rongronggg9/RSS-to-Telegram-Bot/actions/workflows/publish-docker-image.yml?query=branch%3Amaster)
+[![Build status (dev)](https://img.shields.io/github/actions/workflow/status/Rongronggg9/RSS-to-Telegram-Bot/publish-docker-image.yml?branch=dev&label=build%20%28dev%29&logo=docker)](https://github.com/Rongronggg9/RSS-to-Telegram-Bot/actions/workflows/publish-docker-image.yml?query=branch%3Adev)
 
 [![PyPI](https://img.shields.io/pypi/v/rsstt?logo=pypi&logoColor=white)](https://pypi.org/project/rsstt/)
 [![PyPI publish status](https://img.shields.io/github/actions/workflow/status/Rongronggg9/RSS-to-Telegram-Bot/publish-to-pypi.yml?label=publish&logo=pypi&logoColor=white)](https://github.com/Rongronggg9/RSS-to-Telegram-Bot/actions/workflows/publish-to-pypi.yml)
-[![TestPyPI publish status](https://img.shields.io/github/actions/workflow/status/Rongronggg9/RSS-to-Telegram-Bot/publish-to-test-pypi.yml?label=publish%20(TestPyPI)&logo=pypi&logoColor=white)](https://github.com/Rongronggg9/RSS-to-Telegram-Bot/actions/workflows/publish-to-pypi.yml)
+[![TestPyPI publish status](https://img.shields.io/github/actions/workflow/status/Rongronggg9/RSS-to-Telegram-Bot/publish-to-test-pypi.yml?label=publish%20(TestPyPI)&logo=pypi&logoColor=white)](https://github.com/Rongronggg9/RSS-to-Telegram-Bot/actions/workflows/publish-to-test-pypi.yml)
 [![PyPI - Downloads](https://img.shields.io/pypi/dm/rsstt?logo=pypi&logoColor=white)](https://pypi.org/project/rsstt/)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/rsstt?logo=python&label=&labelColor=white)](https://www.python.org)
-
-[![Docker Image Size (tag)](https://img.shields.io/docker/image-size/rongronggg9/rss-to-telegram/latest?logo=docker)](https://hub.docker.com/r/rongronggg9/rss-to-telegram)
-[![Build status (master)](https://img.shields.io/github/actions/workflow/status/Rongronggg9/RSS-to-Telegram-Bot/publish-docker-image.yml?branch=master&label=build&logo=docker)](https://github.com/Rongronggg9/RSS-to-Telegram-Bot/actions/workflows/publish-docker-image.yml?query=branch%3Amaster)
-[![Build status (dev)](https://img.shields.io/github/actions/workflow/status/Rongronggg9/RSS-to-Telegram-Bot/publish-docker-image.yml?branch=dev&label=build%20%28dev%29&logo=docker)](https://github.com/Rongronggg9/RSS-to-Telegram-Bot/actions/workflows/publish-docker-image.yml?query=branch%3Adev)
-[![Docker pulls](https://img.shields.io/docker/pulls/rongronggg9/rss-to-telegram?label=pulls&logo=docker&color=informational)](https://hub.docker.com/r/rongronggg9/rss-to-telegram)
 
 It is quite easy to deploy your RSStT instance. The most recommended way to deploy RSStT is Docker Compose: it is suitable for virtually all VPS. [Railway.app](https://railway.app) (a PaaS platform) is also officially supported. You may also install RSStT from PyPI (tracking `master` branch) or TestPyPI (tracking `dev` branch, which is latest) using pip. For developers or experienced users, dirty run from source is also an option.
 

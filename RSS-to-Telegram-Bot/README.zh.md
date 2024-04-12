@@ -27,6 +27,17 @@
 
 [使用 RSStT 的频道]: docs/channels-using-rsstt.md
 
+<table>
+    <tr>
+        <td><img src="docs/resources/example5.png" alt="Screenshot"></td>
+        <td rowspan="2"><img src="docs/resources/example7.png" alt="Screenshot"></td>
+        <td rowspan="2"><img src="docs/resources/example8.png" alt="Screenshot"></td>
+    </tr>
+    <tr>
+        <td><img src="docs/resources/example6.png" alt="Screenshot"></td>
+    </tr>
+</table>
+
 ## 亮点
 
 - 多用户
@@ -43,7 +54,8 @@
     - 自动判断 RSS 源的标题是否为自动填充，并自动选择是否略去标题 (可自定义)
     - 自动显示作者名 (可自定义)
     - 自动切分超长消息
-        - 如果配置了 Telegraph，消息会通过 Telegraph 发出 (可自定义)
+    - 消息可作为 Telegraph 文章发送 (可自定义)
+      - 大部分图片和视频会被上传至 Telegraph，以便 Instant View 可迅速加载
 - [丰富的自定义格式设定](docs/formatting-settings.md)
     - Hashtag、自定义标题，等等
 - 为 Telegram 和 RSS 源配置独立的代理设置
@@ -55,16 +67,15 @@
 
 ## 部署
 
-[![PyPI](https://img.shields.io/pypi/v/rsstt?logo=pypi&logoColor=white)](https://pypi.org/project/rsstt/)
-[![PyPI publish status](https://img.shields.io/github/actions/workflow/status/Rongronggg9/RSS-to-Telegram-Bot/publish-to-pypi.yml?label=publish&logo=pypi&logoColor=white)](https://github.com/Rongronggg9/RSS-to-Telegram-Bot/actions/workflows/publish-to-pypi.yml)
-[![TestPyPI publish status](https://img.shields.io/github/actions/workflow/status/Rongronggg9/RSS-to-Telegram-Bot/publish-to-test-pypi.yml?label=publish%20(TestPyPI)&logo=pypi&logoColor=white)](https://github.com/Rongronggg9/RSS-to-Telegram-Bot/actions/workflows/publish-to-pypi.yml)
-[![PyPI - Downloads](https://img.shields.io/pypi/dm/rsstt?logo=pypi&logoColor=white)](https://pypi.org/project/rsstt/)
-[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/rsstt?logo=python&label=&labelColor=white)](https://www.python.org)
-
-[![Docker Image Size (tag)](https://img.shields.io/docker/image-size/rongronggg9/rss-to-telegram/latest?logo=docker)](https://hub.docker.com/r/rongronggg9/rss-to-telegram)
+[![dockeri.co](https://dockerico.blankenship.io/image/rongronggg9/rss-to-telegram)](https://hub.docker.com/r/rongronggg9/rss-to-telegram)\
 [![Build status (master)](https://img.shields.io/github/actions/workflow/status/Rongronggg9/RSS-to-Telegram-Bot/publish-docker-image.yml?branch=master&label=build&logo=docker)](https://github.com/Rongronggg9/RSS-to-Telegram-Bot/actions/workflows/publish-docker-image.yml?query=branch%3Amaster)
 [![Build status (dev)](https://img.shields.io/github/actions/workflow/status/Rongronggg9/RSS-to-Telegram-Bot/publish-docker-image.yml?branch=dev&label=build%20%28dev%29&logo=docker)](https://github.com/Rongronggg9/RSS-to-Telegram-Bot/actions/workflows/publish-docker-image.yml?query=branch%3Adev)
-[![Docker pulls](https://img.shields.io/docker/pulls/rongronggg9/rss-to-telegram?label=pulls&logo=docker&color=informational)](https://hub.docker.com/r/rongronggg9/rss-to-telegram)
+
+[![PyPI](https://img.shields.io/pypi/v/rsstt?logo=pypi&logoColor=white)](https://pypi.org/project/rsstt/)
+[![PyPI publish status](https://img.shields.io/github/actions/workflow/status/Rongronggg9/RSS-to-Telegram-Bot/publish-to-pypi.yml?label=publish&logo=pypi&logoColor=white)](https://github.com/Rongronggg9/RSS-to-Telegram-Bot/actions/workflows/publish-to-pypi.yml)
+[![TestPyPI publish status](https://img.shields.io/github/actions/workflow/status/Rongronggg9/RSS-to-Telegram-Bot/publish-to-test-pypi.yml?label=publish%20(TestPyPI)&logo=pypi&logoColor=white)](https://github.com/Rongronggg9/RSS-to-Telegram-Bot/actions/workflows/publish-to-test-pypi.yml)
+[![PyPI - Downloads](https://img.shields.io/pypi/dm/rsstt?logo=pypi&logoColor=white)](https://pypi.org/project/rsstt/)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/rsstt?logo=python&label=&labelColor=white)](https://www.python.org)
 
 部署 RSStT 实例非常简单。最推荐的部署方式是 Docker Compose: 它适合几乎所有 VPS。[Railway.app](https://railway.app) (一个 PaaS 平台) 也得到了官方支持。您也可以使用 pip 从 PyPI (跟踪 `master` 分支) 或 TestPyPI (跟踪最新的 `dev` 分支) 安装 RSStT。对于开发人员或有经验的用户，从源代码直接运行也是一个选项。
 
