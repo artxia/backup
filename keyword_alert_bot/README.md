@@ -31,7 +31,8 @@ Telegram关键字提醒机器人，用于实时监测频道/群组中的关键�
 
 http://t.me/keyword_alert_bot
 
-![image](https://user-images.githubusercontent.com/10736915/171514829-4186d486-e1f4-4303-b3a9-1cfc1b571668.png)
+<img width="300px" alt="demo" src="https://user-images.githubusercontent.com/10736915/171514829-4186d486-e1f4-4303-b3a9-1cfc1b571668.png" />
+
 
 
 # USAGE
@@ -105,6 +106,9 @@ docker run -it --name keyword_alert_bot -v $(pwd)/config.yml:/app/config.yml   y
 ```
 
 ## BUG Q&A
+ - You have joined too many channels/supergroups (caused by JoinChannelRequest)
+
+ BOT中所有订阅频道的总数超过 500。原因是BOT使用的Telegram演示账户限制导致。建议你自行部署
 
  - 查看日志发现个别群组无法接收消息，而软件客户端正常接收
 
