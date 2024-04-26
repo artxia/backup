@@ -2,12 +2,19 @@
 
 ## Unreleased
 
+### BREAKING CHANGES
+
+- **Migrate to `aerich` 0.7.2**: A breaking change introduced in `aerich` (a dependency of RSStT) 0.7.x has prevented RSStT from upgrading it for a long time. A lot of effort has been made, so the migration is expected to be seamless and shouldn't break anything. However, it is encouraged to make a database backup before upgrading RSStT. If you encounter any issues due to the migration, please file a bug report.
+
 ### Highlights
 
+- **#Hashtags from post (feed entry)**: If enabled in `/set` or `/set_default`, hashtags from posts (feed entries), merged with the custom hashtags of the feed, will be added to the message. The term "hashtags from post" refers to `<category>` elements in RSS `<item>` or Atom `<entry>`. This feature is disabled by default. Thanks [@maooyer](https://github.com/maooyer) for their first contribution in [#449](https://github.com/Rongronggg9/RSS-to-Telegram-Bot/pull/449).
 - **Support Python 3.12**: Minor fixes have been made to support Python 3.12. The official Docker image is now based on Python 3.12 as well.
+- **Helper scripts to make contributions easier**: When performing contributions that update database models, creating database migration files is not an easy job. [scripts/aerich_helper.py](../scripts/aerich_helper.py) is a helper script that can simplify the process. Passing `--help` to the script to see a detailed usage guide.
 
 ### Enhancements
 
+- **Better handling custom #hashtags**: Invalid characters and punctuations that break hashtags are now replaced with `_` (underscore) when setting custom hashtags.
 - **Minor refactor**: Some internal functions have been refactored to improve readability and maintainability.
 
 ## v2.6.0: Upload media to Telegraph, management enhancements
