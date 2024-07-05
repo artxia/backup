@@ -17,7 +17,7 @@ jobs:
         git clone https://github.com/Xtao-Labs/PagerMaid-Modify.git gitclone
 
     - name: Deploy to Pages
-      uses: JamesIves/github-pages-deploy-action@4.1.1
+      uses: JamesIves/github-pages-deploy-action@v4
       with:
         git-config-name: GitHub Action
         git-config-email: action@github.com
