@@ -1,11 +1,12 @@
 # CHANGELOG
 
-## dev
+## [0.5.0] - 2024.5.14
 ### Fixed
 - Handle exception that occurs when backend init trys to find a deleted chat
 
 ### Changed
 - When downloding history, now the backend will store all messages in memory and write them to index at once, to avoid blocking regular update
+- Use PDM package manager
 
 ## [0.4.0] - 2023.2.2
 
