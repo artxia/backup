@@ -8,7 +8,6 @@ const {
   R_MQ_MAIN_CHANNEL,
   R_MQ_SECOND_CHANNEL,
   WORKER,
-  TG_PH_TOKEN2,
 } = require('../config/vars');
 const {parseEnvArray} = require('../api/utils');
 
@@ -108,7 +107,6 @@ const runMqChannel = async (job, qName) => {
     }
     const channel = await createChan(queueName);
     if (!channel) return;
-    // eslint-disable-next-line no-param-reassign
     job.isClosed = false;
     channel.consume(queueName, message => {
       if (message) {
@@ -140,7 +138,7 @@ const runMqChannels = job => {
     return;
   }
   setTimeout(() => {
-    runMqChannel(job, R_MQ_MAIN_CHANNEL);
+    runMqChannel(job, TASKS_CHANNEL);
     if (R_MQ_SECOND_CHANNEL) {
       runMqChannel(job, R_MQ_SECOND_CHANNEL);
     }
@@ -166,9 +164,7 @@ function shuffle(arr) {
 
     // And swap it with the current element.
     temporaryValue = arr[currentIndex];
-    // eslint-disable-next-line no-param-reassign
     arr[currentIndex] = arr[randomIndex];
-    // eslint-disable-next-line no-param-reassign
     arr[randomIndex] = temporaryValue;
   }
 
@@ -176,20 +172,19 @@ function shuffle(arr) {
 }
 
 function getKey() {
-  const h = new Date().getHours();
-  const keys1 = shuffle(keys);
-  return keys1.find((k, i) => h <= (24 / keys.length) * (i + 1)) || keys[0];
+  const hours = new Date().getHours();
+  const shuffleKeys = shuffle(keys);
+
+  return shuffleKeys.find((k, i) => hours <= (24 / keys.length) * (i + 1)) || keys[0];
 }
 
 const getMqParams = (queueName = TASKS_CHANNEL) => {
   const isPuppet = queueName === PUPPET_QUE;
-  let accessToken = getKey();
-  if (queueName === R_MQ_SECOND_CHANNEL) {
-    accessToken = TG_PH_TOKEN2;
-  }
+  const access_token = getKey();
+
   return {
     isPuppet,
-    access_token: accessToken,
+    access_token,
   };
 };
 
@@ -201,7 +196,6 @@ const addToChannel = (taskParams, qName = TASKS_CHANNEL) => {
       const elTime = elapsedSec(queueName);
       logger('');
       logger(`availableOne ${availableOne}`);
-      logger(`elTime ${elTime}`);
       if (queueName === TASKS_CHANNEL && !availableOne && elTime > 15) {
         queueName = R_MQ_SECOND_CHANNEL;
       }
@@ -221,12 +215,13 @@ const time = (queueName = TASKS_CHANNEL, start = false) => {
   if (queueName === TASKS_CHANNEL) {
     availableOne = !start;
   }
-  const t = elapsedTime(queueName);
+  const time1 = elapsedTime(queueName);
   if (start) {
     resetTime(queueName);
   }
-  return t;
+  return time1;
 };
+
 const timeStart = q => time(q, true);
 
 module.exports.startFirst = startFirst;

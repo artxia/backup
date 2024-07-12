@@ -7,22 +7,28 @@ const url = require('url');
 
 const {REST_API} = require('../../config/vars');
 
-const mercury = require('./mercury');
+const mercuryParse = require('./mercury');
 const fixImages = require('./fixImages');
 const puppet = require('./puppet');
 const {getDom} = require('./dom');
 const {logger} = require('./logger');
+const {
+  fetchTimeout,
+  timeout
+} = require('./index');
 
 const ASYNC_FILE = 'asyncContent.html';
 
+const race = (promises) => Promise.race(promises);
+
 function parseServices(link) {
   if (link.match(/^(https?:\/\/)?(www.)?google/)) {
-    const l = link.match(/url=(.*?)($|&)/);
-    if (l && l[1]) return l[1];
+    const found = link.match(/url=(.*?)($|&)/);
+    if (found && found[1]) return found[1];
   }
   if (link.match(/\/turbo\?text=/)) {
-    const l = link.match(/text=(.*?)($|&)/);
-    if (l && l[1]) return l[1];
+    const found = link.match(/text=(.*?)($|&)/);
+    if (found && found[1]) return found[1];
   }
   return link;
 }
@@ -55,7 +61,8 @@ class ParseHelper {
 
   addExtractor() {
     if (!this.domain) return;
-    const e = {
+
+    const newExtractor = {
       domain: this.domain,
       extend: {
         iframe: {
@@ -64,6 +71,7 @@ class ParseHelper {
         },
       },
     };
+
     let selectors = null;
     if (this.fb) {
       selectors = ['.userContentWrapper'];
@@ -76,10 +84,10 @@ class ParseHelper {
       selectors = [this.params.content];
     }
     if (selectors) {
-      e.content = {selectors};
+      newExtractor.content = {selectors};
     }
-    if (e) {
-      Mercury.addExtractor(e);
+    if (newExtractor) {
+      Mercury.addExtractor(newExtractor);
     }
   }
 
@@ -101,13 +109,13 @@ class ParseHelper {
   }
 
   async puppet() {
-    let l = this.link;
+    let link = this.link;
     if (this.params.isCached) {
-      l = `${REST_API}file?file=${ASYNC_FILE}`;
+      link = `${REST_API}file?file=${ASYNC_FILE}`;
     }
     let html = '';
     if (!this.params.isPuppet) {
-      html = await puppet(l, this.params);
+      html = await puppet(link, this.params);
       if (!this.params.isCached) {
         this.log(html, ASYNC_FILE);
       }
@@ -128,11 +136,13 @@ class ParseHelper {
       this.log(content, 'puppet.html');
     } else {
       try {
-        content = await fetch(link, {timeout: 5000}).then(r => r.text());
+        content = await fetchTimeout(link)
+          .then(r => r.text());
       } catch (e) {
+        logger(e);
         content = '';
       }
-      this.log(content, 'fetchContent.html');
+      this.log(content, 'fetched_content.html');
     }
     if (this.fb) {
       const title = content.match(/<title.*>([^<]+\/?)/);
@@ -148,7 +158,7 @@ class ParseHelper {
     if (!content) {
       throw new Error('empty content');
     }
-    this.log(content, 'fixedFetched.html');
+    this.log(content, 'fixed_fetched.html');
 
     return content;
   }
@@ -165,10 +175,15 @@ class ParseHelper {
   }
 
   fixHtml(content, iframe) {
-    return fixImages.fixHtml(content, iframe, this.parsed, this.params);
+    return content;
+    // if (!content) {
+    //   return Promise.resolve(false);
+    // }
+    // return fixImages.fixHtml(content, iframe, this.parsed, this.params);
   }
 
   log(content, file) {
+    logger(content && `len - ${content.length}`);
     if (this.params.isadmin) {
       logger(content, file);
     }
@@ -193,7 +208,6 @@ class ParseHelper {
       this.log('html from cache');
       result.content = `${fs.readFileSync(`.conf/${cacheFile}`)}`;
     } else {
-      // eslint-disable-next-line
       if (mozillaParserEnabled) {
         logger('mozilla');
         if (opts.html) {
@@ -201,24 +215,29 @@ class ParseHelper {
           this.log(result.content, 'mozilla.html');
         }
       } else {
-        result = await mercury(userUrl, opts);
+        result = await mercuryParse(userUrl, opts);
         this.log(result.content, 'mercury.html');
       }
     }
     let {content} = result;
+    this.log(content, 'before_content.html');
+
     let preContent = sanitizeHtml(content);
     if (typeof preContent === 'string') {
       preContent = preContent.trim();
     }
-    this.log(preContent, 'preContent.html');
+
     if (preContent.length === 0) {
       const html = await this.puppet(userUrl);
       if (html) {
-        result = await mercury(userUrl, {html: Buffer.from(html)});
+        result = await mercuryParse(userUrl, {html: Buffer.from(html)});
         this.log(result.content, 'mercuryAsyncContent.html');
       }
     }
-    const {url: source, iframe} = result;
+    const {
+      url: source,
+      iframe
+    } = result;
     let {title = ''} = result;
     if (iframe) {
       this.log(iframe, 'iframes.html');
@@ -227,12 +246,17 @@ class ParseHelper {
       title = this.title;
     }
     content = result.content;
-    if (content) {
-      content = await this.fixHtml(content, iframe);
-      content = this.fixImages(content);
-      this.log(content, 'tg_content.html');
-      this.log(`after san ${content.length}`);
+    const data = await race([
+      this.fixHtml(content, iframe),
+      timeout(7)
+    ]);
+    logger('typeof data ' + typeof data);
+    if (typeof data === 'string' && data) {
+      content = this.fixImages(data);
+      this.log(content, 'after_content.html');
+      logger(`after clean ${content.length}`);
     }
+
     title = title && title.trim();
     title = title || 'Untitled article';
 

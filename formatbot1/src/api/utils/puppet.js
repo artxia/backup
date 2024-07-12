@@ -13,20 +13,25 @@ const getBrowser = async () => {
     '--disable-background-timer-throttling',
     '--lang=en',
     '--incognito',
+    '--disabled-setupid-sandbox',
   ];
   const opts = {args};
   if (HEADLESS !== '1') {
     opts.headless = 'new';
   }
-  return puppeteer.launch(opts).then(browser => {
-    const browserWSEndpoint = browser.wsEndpoint();
-    browser.disconnect();
-    return browserWSEndpoint;
-  });
+  return puppeteer.launch(opts)
+    .then(browser => {
+      const browserWSEndpoint = browser.wsEndpoint();
+      browser.disconnect();
+      return browserWSEndpoint;
+    });
 };
 
 const puppet = async (url, params) => {
-  const {browserWs: ws, scroll} = params;
+  const {
+    browserWs: ws,
+    scroll
+  } = params;
   if (!ws) {
     return Promise.resolve('');
   }
@@ -37,22 +42,25 @@ const puppet = async (url, params) => {
     const browser = await puppeteer.connect({browserWSEndpoint: ws});
     const page = await browser.newPage();
     const status = await page
-      .goto(url, {waitUntil: 'load', timeout: 30000})
-      .catch(() => page.close().then(() => page.content()));
+      .goto(url, {
+        waitUntil: 'load',
+        timeout: 30000
+      })
+      .catch(() => page.close()
+        .then(() => page.content()));
     if (!status.ok) {
       logger('cannot open google.com');
     } else {
       logger('wait');
-      const scCnt = scroll ? 6 : 3;
+      const scrollCount = scroll ? 6 : 3;
       logger(scroll);
       await timeout(5);
-      for (let i = 0; i < scCnt; i += 1) {
-        // eslint-disable-next-line no-await-in-loop,no-loop-func
+      for (let scrollTime = 0; scrollTime < scrollCount; scrollTime += 1) {
         await page.evaluate(sc => {
           window.scrollBy(0, 200);
-          const s = document.getElementById(sc);
-          if (s) {
-            s.scrollTop += 200;
+          const scrollElement = document.getElementById(sc);
+          if (scrollElement) {
+            scrollElement.scrollTop += 200;
           }
         }, scroll);
       }

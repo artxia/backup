@@ -3,21 +3,19 @@ module.exports = {
 
 - From a channel/group by "Forward" a message links.
 - By a direct text message links to me.`,
-  showIvMessage: (long, InstantViewUrl, sourceLink) =>
-    `${long ? `${long} ` : ''}from [source](${sourceLink})`,
+  showIvMessage: (long, InstantViewUrl, sourceLink, sourceName = 'source') =>
+    `${long ? `${long} ` : ''}from [${sourceName}](${sourceLink})`,
   broken: (link, helpMessage) =>
     `Sorry, but your [link](${link}) is broken, restricted, or content is empty${
       helpMessage ? `\n${helpMessage}` : ''
     }`,
   brokenFile: reason => `Sorry, but your file invalid, reason: ${reason}`,
   timeOut: () =>
-    'Process has been reset/server is not responding, please try again later',
+    'Work has been reset/server is not responding, please try again later',
   isLooksLikeFile: link => `It looks like a file [link](${link})`,
   resolved: () => 'This error resolved, please check link again',
   support: links => {
-    let s = 'For support:';
-    s += `${links.length ? `\n${links.join('\n\n')}` : ''}`;
-    return s;
+    return `For support:${links.length ? `\n${links.join('\n\n')}` : ''}`;
   },
   cleanCommands: links =>
     `${links.length ? `\n/cleardb3_${links.join('\n/cleardb3_')}` : ''}`,

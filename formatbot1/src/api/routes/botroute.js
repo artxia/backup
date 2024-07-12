@@ -1,13 +1,21 @@
 const fs = require('fs');
 
-const {BotHelper} = require('../utils/bot');
+const {
+  BotHelper,
+  BANNED_ERROR
+} = require('../utils/bot');
 const format = require('./format');
 const db = require('../utils/db');
 const messages = require('../../messages/format');
-const {WORKER, NO_BOT, IS_DEV} = require('../../config/vars');
+const {
+  WORKER,
+  NO_BOT,
+  IS_DEV
+} = require('../../config/vars');
 const {logger} = require('../utils/logger');
 
 global.skipCount = 0;
+global.isDevEnabled = IS_DEV;
 
 const filepath = 'count.txt';
 if (!fs.existsSync(filepath)) {
@@ -60,32 +68,28 @@ const botRoute = (bot, conn) => {
 
   bot.command('showconfig', ctx => {
     if (botHelper.isAdmin(ctx.message.chat.id)) {
-      try {
-        const c = botHelper.showConfig()
-        ctx.reply(c);
-      } catch (e) {
-        botHelper.sendError(e);
-      }
+      return ctx.reply(botHelper.showConfig());
     }
   });
 
-  bot.command('stat', ctx => {
+  bot.command('stat', async ctx => {
     if (botHelper.isAdmin(ctx.message.chat.id)) {
       if (!botHelper.conn) {
         return ctx.reply('db off');
       }
-      db.stat().then(r => ctx.reply(r).catch(e => botHelper.sendError(e)));
+      try {
+        const res = await db.stat();
+        return ctx.reply(res);
+      } catch (e) {
+        botHelper.sendError(e);
+      }
     }
   });
 
   bot.hears(/^\/cleardb*/, async ctx => {
     if (botHelper.isAdmin(ctx.message.chat.id)) {
-      const r = await db.clear(ctx.message);
-      try {
-        ctx.reply(r);
-      } catch (e) {
-        botHelper.sendError(e);
-      }
+      const res = await db.clearFromCollection(ctx.message);
+      return ctx.reply(res);
     }
   });
 
@@ -123,28 +127,29 @@ const botRoute = (bot, conn) => {
     }
   });
 
-  bot.command('getInfo', ({message}) => {
+  bot.command('getInfo', async ({message}) => {
     if (botHelper.isAdmin(message.from.id)) {
-      botHelper.getInfo().then(info => {
-        botHelper.sendAdmin(`Info:\n${JSON.stringify(info)}`);
-      });
+      const info = await botHelper.getInfo();
+      return botHelper.sendAdmin(`Info:\n${JSON.stringify(info)}`);
     }
   });
 
-  bot.command('getCleanData', ({message}) => {
+  bot.command('getClean', async ({message}) => {
     if (botHelper.isAdmin(message.from.id)) {
-      db.getCleanData().then(r => {
-        botHelper.sendAdmin(`${messages.cleanCommands(r)}`);
-      });
+      const data = await db.getCleanData(message.text);
+
+      return botHelper.sendAdmin(messages.cleanCommands(data));
     }
   });
 
   process.on('unhandledRejection', reason => {
+    logger('unhandledRejection');
     if (`${reason}`.match('bot was blocked by the user')) {
-      return;
+      // return;
+      botHelper.sendAdmin(`unhandledRejection blocked ${reason}`);
     }
-    if (`${reason}`.match(BotHelper.BANNED_ERROR)) {
-      return;
+    if (`${reason}`.match(BANNED_ERROR)) {
+      botHelper.sendAdmin(`unhandledRejection banned ${reason}`);
     }
     botHelper.sendAdmin(`unhandledRejection: ${reason}`);
   });
@@ -152,11 +157,7 @@ const botRoute = (bot, conn) => {
   format(bot, botHelper, skipCount);
 
   if (!NO_BOT) {
-    bot.launch().catch(e => {
-      console.log('____LAUNCH ERROR');
-      logger(e);
-      console.log('____LAUNCH ERROR');
-    });
+    bot.launch();
   }
 
   if (startCnt % 10 === 0 || IS_DEV) {
@@ -169,7 +170,7 @@ const botRoute = (bot, conn) => {
 
   if (startCnt >= 500) startCnt = 0;
 
-  fs.writeFileSync(filepath, parseInt(startCnt, 10).toString());
+  fs.writeFileSync(filepath, `${startCnt}`);
 
   botHelper.setBlacklist();
 

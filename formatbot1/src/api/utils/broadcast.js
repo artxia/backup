@@ -3,7 +3,7 @@ const {
   MONGO_URI_BROAD,
   DEV_USERNAME,
 } = require('../../config/vars');
-const Any = require('../models/any.model');
+const schema = require('../models/schema');
 const {createConnection} = require('../../config/mongoose');
 const co = require('co');
 const {logger} = require('./logger');
@@ -44,12 +44,13 @@ const processRows = async (cc, limit = 25, timeout, cb) => {
 };
 
 const getCmdParams = txt => {
-  let l = txt.match(/r_c_id_([0-9_-]+)/);
-  if (l && l[1]) {
-    l = l[1].split('_')
-      .map(Number);
+  let params = txt.match(/r_c_id_([0-9_-]+)/);
+  if (params && params[1]) {
+    params = params[1].split('_');
+    params = params.map(Number);
   }
-  return l || [];
+
+  return params || [];
 };
 
 const createBroadcast = async (ctx, txt) => {
@@ -63,7 +64,7 @@ const createBroadcast = async (ctx, txt) => {
     versionKey: false
   }));
 
-  const messages = connSecond.model('users', Any.schema);
+  const messages = connSecond.model('users', schema);
   const filter = {};
 
   if (onlyMe === 1) {
@@ -128,7 +129,7 @@ const startBroadcast = async (ctx, txtParam, botHelper) => {
   };
   const connBroad = createConnection(MONGO_URI_BROAD);
 
-  const model = connBroad.model('broadcasts', Any.schema);
+  const model = connBroad.model('broadcasts', schema);
 
   const filter = {
     sent: {$exists: false},
@@ -147,13 +148,13 @@ const startBroadcast = async (ctx, txtParam, botHelper) => {
     }
     const success = [];
     try {
-      for (let i = 0; i < items.length; i += 1) {
+      for (let itemIdx = 0; itemIdx < items.length; itemIdx += 1) {
         if (breakProcess) break;
 
         const {
           _id,
           uid: id
-        } = items[i];
+        } = items[itemIdx];
 
         const runCmd = () => botHelper.forwardMes(mId, fromId * (isChannel ? -1 : 1), id);
         const preCmd = !preMessage ? false : (() => botHelper.sendAdmin(preMessage, id));
@@ -206,7 +207,8 @@ const startBroadcast = async (ctx, txtParam, botHelper) => {
       await model.bulkWrite(success);
     }
   });
-  const r = `${JSON.stringify(result)}`;
+
+  const resulStr = `${JSON.stringify(result)}`;
   const cntSent = await model.countDocuments({
     cId,
     sent: true
@@ -228,10 +230,11 @@ const startBroadcast = async (ctx, txtParam, botHelper) => {
   }
   await connBroad.close();
 
-  return ctx.reply(`broad completed: ${r} with ${breakProcess || ''} ${log}`)
-    .catch(e => {
-      logger(e);
-    });
+  try {
+    return ctx.reply(`broad completed: ${resulStr} with ${breakProcess || ''} ${log}`);
+  } catch (e) {
+    logger(e);
+  }
 };
 
 /** @type BotHelper */
@@ -244,7 +247,7 @@ const processBroadcast = async (txtParam, ctx, botHelper) => {
   if (txt.match(sBroad)) {
     txt = txt.replace(sBroad, '');
     ctx.reply('broad send started');
-    return startBroadcast(ctx, txt, botHelper);
+    await startBroadcast(ctx, txt, botHelper);
   }
   return Promise.resolve();
 };

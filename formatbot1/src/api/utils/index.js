@@ -1,10 +1,20 @@
-const CHECK_REGEX = /(p_cache|content|custom|puppet|wget|cached|nodb)_force(.*?)$/;
-function check(txt) {
-  const m = txt.match(CHECK_REGEX);
-  if (m && m[1]) {
-    return m[1];
-  }
-  return false;
+const {
+  Agent,
+  fetch
+} = require('undici');
+
+const CHECK_REGEX = /(p_cache|content|custom|puppet|wget|cached|no_db)_force(.*?)$/;
+
+function commandCheck(txt) {
+  const found = txt.match(CHECK_REGEX);
+
+  return found && found[1];
+}
+
+function fetchTimeout(u, connectTimeout = 10000) {
+  return fetch(u, {
+    dispatcher: new Agent({connectTimeout})
+  });
 }
 
 function timeout(s, f) {
@@ -26,12 +36,14 @@ function checkData(data, msg = 'missing data') {
 
 function parseEnvArray(name = '') {
   const arr = [];
-  if (process.env[`${name}_0`]) {
-    arr.push(process.env[`${name}_0`]);
+  const {env} = process;
+
+  if (env[`${name}_0`]) {
+    arr.push(env[`${name}_0`]);
   }
-  for (let i = 1; i < 10; i += 1) {
-    if (process.env[`${name}_${i}`]) {
-      arr.push(process.env[`${name}_${i}`]);
+  for (let envItem = 1; envItem < 10; envItem += 1) {
+    if (env[`${name}_${envItem}`]) {
+      arr.push(env[`${name}_${envItem}`]);
     }
   }
   return arr;
@@ -39,15 +51,16 @@ function parseEnvArray(name = '') {
 
 const toUrl = url => {
   if (url.match('www.')) {
-    url = url.replace(/www\./,'');
+    url = url.replace(/www\./, '');
   }
   if (!url.match(/^(https?|ftp|file)/)) return `http://${url}`;
   return url;
 };
 
-module.exports.check = check;
+module.exports.commandCheck = commandCheck;
 module.exports.timeout = timeout;
 module.exports.checkData = checkData;
 module.exports.toUrl = toUrl;
 
 module.exports.parseEnvArray = parseEnvArray;
+module.exports.fetchTimeout = fetchTimeout;
