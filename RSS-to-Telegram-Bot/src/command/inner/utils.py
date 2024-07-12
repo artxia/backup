@@ -41,10 +41,15 @@ def calculate_update(old_hashes: Optional[Sequence[str]], entries: Sequence[dict
         for guid, entry in (
             (
                 entry.get('guid') or entry.get('link') or entry.get('title') or entry.get('summary')
-                or entry.get('content', ''),
+                or (
+                    # the first non-empty content.value
+                    next(filter(None, map(lambda content: content.get('value'), entry.get('content', []))), '')
+                ),
                 entry
-            ) for entry in entries
-        ) if guid
+            )
+            for entry in entries
+        )
+        if guid
     }
     if old_hashes:
         new_hashes_d.update(zip(old_hashes, repeat(None)))
@@ -54,7 +59,7 @@ def calculate_update(old_hashes: Optional[Sequence[str]], entries: Sequence[dict
 
 
 def filter_urls(urls: Optional[Iterable[str]]) -> tuple[str, ...]:
-    return tuple(filter(lambda x: x.startswith('http://') or x.startswith('https://'), urls)) if urls else tuple()
+    return tuple(filter(lambda x: x.startswith('http://') or x.startswith('https://'), urls)) if urls else ()
 
 
 # copied from command.utils

@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+### Bug fixes
+
+- **`/version` not working**: When installed from PyPI (e.g. `pip install rsstt`), the `/version` command might cause an error. This was a regression introduced in v2.7.0.
+- **Bot managers can set monitoring intervals shorter than limit**: Due to the breaking change introduced in v2.8.0, the privilege of bot managers to set intervals shorter than the minimal monitoring interval became useless. While v2.8.0 only applied this limitation when monitoring the updates of feeds, this release also applies it to the attempts by bot managers to change the monitoring interval for a subscription. Note: bot managers can always lower the minimal monitoring interval by adjusting `minimal_interval` in `/set_option` (see also [Advanced Settings](advanced-settings.md)), but doing so will also permit anyone who is able to use the bot to set shorter intervals.
+
+## v2.8.0: Retain post order, rewritten monitor, and more
+
+### BREAKING CHANGES
+
+- **Minimal monitoring interval is enforced**: The minimal monitoring interval (`minimal_interval` in `/set_option`) is now applied to all subscriptions regardless of their interval set in the database. Previously, setting a minimal monitoring interval would only affect future attempts to change the monitoring interval for a subscription and would not be applied to bot managers. As a result, pre-existing subscriptions and subscriptions of bot managers escaped. The new behavior is more consistent and predictable. If you are a bot manager of a self-hosted instance and rely on the old behavior that bot managers were able to set shorter intervals than the minimal monitoring interval, you probably need to adjust `minimal_interval` in `/set_option` (see also [Advanced Settings](advanced-settings.md)).
+
+### Highlights
+
+- **Retain post order**: Retain the order of posts in a feed when sending them. Previously, all new posts were sent simultaneously, losing their order within the feed. Note: Posts from different feeds are still sent simultaneously, so it is expected to see them interlaced.
+- **Rewritten monitor**: The feed monitor has been rewritten for flexibility and robustness. It is now more memory-efficient and can smooth out spikes in CPU usage.
+
+### Enhancements
+
+- **Print Telegram user info of bot**: Print the bot's Telegram user info when the bot is started. This is to help bot managers to find the bot's username and user ID when deploying the bot.
+- **Minor refactor**: Some internal functions have been refactored to improve performance and maintainability.
+
+### Bug fixes
+
+- **Exit with 0 when disconnected**: If the bot was logged out due to a network error or Telegram DC degradation, it would exit with exit-code 0. This led to confusion when the bot was running in a container or as a service. Now the bot will exit with exit-code 100 when disconnected.
+- **Unable to handle completely empty posts**: Fix `AttributeError` caused by completely empty posts. They are ignored now.
+- **Minor bug fixes**
+
 ## v2.7.0: #Hashtags from post, Python 3.12 support, and more
 
 ### BREAKING CHANGES
@@ -55,7 +84,7 @@
 ### Bug fixes
 
 - **Stay in topic group even when the "General" topic is closed**: Now that topic groups are not fully supported, the bot can only send messages in the "General" topic. Previously, the bot would only send an error message to the bot manager if the "General" topic is closed. Now the bot will leave the topic group, without disturbing the bot manager, if the "General" topic is closed. This is a temporary limitation before topic groups are fully supported.
-- **v2.4.1 not released to PyPI**: Due to a previous mistake, v2.4.1 could not be released to PyPI. v2.5.0 fixes the mistake and is released to PyPI. 
+- **v2.4.1 not released to PyPI**: Due to a previous mistake, v2.4.1 could not be released to PyPI. v2.5.0 fixes the mistake and is released to PyPI.
 
 ## v2.4.1: Minor enhancements, bug fixes, and Happy New Year!
 
@@ -283,7 +312,7 @@ Official public bot [@RSStT_Bot](https://t.me/RSStT_Bot) is always using the `de
 
 Official public bot: [@RSStT_Bot](https://t.me/RSStT_Bot)
 
-**This is a major release. It introduces some major breaking changes. You must migrate to the new version manually.**  
+**This is a major release. It introduces some major breaking changes. You must migrate to the new version manually.**\
 **PLEASE READ THE [MIGRATION GUIDE](migration-guide-v2.md) BEFORE UPDATING!**
 
 ### BREAKING CHANGES
