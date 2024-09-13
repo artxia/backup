@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## v2.9.0: Telegraph-related revert, skip cert verification, and more
+
+### BREAKING CHANGES
+
+Media (image and video) are no longer uploaded when generating Telegraph posts due to [Telegraph disabling media upload](https://t.me/durov/343). (first introduced in v2.6.0)
 
 ### Addition
 
