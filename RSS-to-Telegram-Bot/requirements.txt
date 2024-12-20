@@ -1,6 +1,6 @@
 # telegram and telegraph
 cryptg==0.5.0.post0
-telethon==1.37.0
+telethon==1.38.1
 aiographfix==0.2.2
 
 # feed parsing
@@ -13,25 +13,25 @@ rapidfuzz==3.10.1
 emoji==2.14.0
 minify-html==0.15.0
 minify-html-onepass==0.15.0
-matplotlib==3.9.2
+matplotlib==3.9.3
 
 # db
 asyncpg==0.30.0
-tortoise-orm[accel]==0.21.7
-aerich==0.7.2
+tortoise-orm[accel]==0.22.2
+aerich==0.8.0
 
 # network
-aiohttp[speedups]==3.10.10
-aiohttp-socks==0.9.0
-aiohttp-retry==2.8.3
+aiohttp[speedups]==3.11.10
+aiohttp-socks==0.9.1
+aiohttp-retry==2.9.1
 python-socks[asyncio]==2.5.3
 dnspython[idna]==2.7.0
 
 # utils
-yarl==1.17.1
-propcache==0.2.0
+yarl==1.18.3
+propcache==0.2.1
 colorlog==6.9.0
-APScheduler==3.10.4
+APScheduler==3.11.0
 python-dotenv==1.0.1
 multidict==6.1.0
 asyncstdlib==3.13.0
