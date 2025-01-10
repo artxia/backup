@@ -26,6 +26,7 @@ const {
   getLink
 } = require('../utils/links');
 const {jobMessage} = require('../../service/jobMessage');
+const {dbKeys} = require("../../config/consts");
 
 global.lastIvTime = +new Date();
 
@@ -34,6 +35,8 @@ const validRegex = '^(https?:\\/\\/)?(www.)?(graph.org|telegra.ph|www.youtube.co
 if (!NO_MQ) {
   rabbitMq.startFirst();
 }
+
+const PDF_LINK = 'https://pdf.pdf/pdf';
 
 const support = async (ctx, botHelper) => {
   let system = JSON.stringify(ctx.message.from);
@@ -174,6 +177,9 @@ const format = (bot, botHelper, skipCountBool) => {
     } =
     message || {};
     if (rplToMsg || message.audio) {
+      if (botHelper.isAdmin(message.from.id)) {
+          botHelper.sendAdmin(rplToMsg.message_id, message.from.id);
+      }
       return;
     }
     let {entities} = message;
@@ -190,8 +196,45 @@ const format = (bot, botHelper, skipCountBool) => {
 
     const isAdm = botHelper.isAdmin(chatId);
     const rpl = rplToMsg;
+    let pdfData = {};
+
     if (msg.document || (rpl && rpl.document)) {
-      return;
+        const {file_name, mime_type, file_id, file_size} = msg.document;
+        if (
+            isAdm
+            && file_name.match(/.pdf$/)
+            && mime_type === 'application/pdf'
+        ) {
+            if (file_size < 4e6) {
+              const cnt = await db.get({
+                  key: dbKeys.counter,
+                  filter: {url: chatId, iv: 'pdf'},
+                  project: 'af updatedAt'
+              });
+              if (cnt) {
+                  const now = Date.now();
+                  const oneDay = 24 * 60 * 60 * 1000;
+                  const isMoreThanADay = (now - cnt.updatedAt) > oneDay;
+                  if (isMoreThanADay) {
+                      pdfData.pdfReset = 1;
+                  } else {
+                      if (cnt.af >= 10) {
+                          console.log('exceeded pdf');
+                          let hours = Math.floor((now - cnt.updatedAt)/3_600_000);
+                          return ctx.reply('You have exceeded the maximum number of pdfs in 24 hours period, come back after ' + (24 - hours) + 'h');
+                      }
+                  }
+              }
+              pdfData.pdf = file_id;
+              pdfData.pdfTitle = file_name;
+              text = PDF_LINK + encodeURI(file_name);
+            } else {
+              console.log('big pdf');
+              return ctx.reply('You have exceeded the maximum size of pdf (4mb) ');
+            }
+        } else {
+            return;
+        }
     }
 
     if (caption) {
@@ -207,7 +250,12 @@ const format = (bot, botHelper, skipCountBool) => {
         links = getLinkFromEntity(entities, text);
       }
       link = getLink(links);
-      if (!link) return;
+
+      if (!link) {
+          logger('no link');
+          return;
+      }
+
       let parsed;
       if (link) {
         link = toUrl(link);
@@ -222,7 +270,6 @@ const format = (bot, botHelper, skipCountBool) => {
       logger('parsed');
       logger(parsed.protocol);
       try {
-
         if (link.match(/^(https?:\/\/)?(www.)?google/)) {
           const matchUrl = link.match(/url=(.*?)($|&)/);
           if (matchUrl && matchUrl[1]) link = decodeURIComponent(matchUrl[1]);
@@ -278,6 +325,7 @@ const format = (bot, botHelper, skipCountBool) => {
           chatId,
           link,
           isChanMesId,
+          ...pdfData,
         };
         if (from) {
           task.fromId = from.id;
@@ -307,6 +355,13 @@ const format = (bot, botHelper, skipCountBool) => {
       }
     }
   };
+
+  // bot.use(ctx =>
+  //     addToQueue(ctx)
+  //         .catch(e =>
+  //             botHelper.sendError(`tg err1: ${JSON.stringify(e)}`),
+  //         ),
+  // );
 
   bot.on('channel_post', ctx =>
     addToQueue(ctx)

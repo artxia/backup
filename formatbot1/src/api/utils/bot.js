@@ -1,4 +1,5 @@
 const broadcast = require('tgsend');
+// const broadcast = require('../../../../../git/tgsend');
 const fs = require('fs');
 const {
     TG_ADMIN_ID,
@@ -371,6 +372,13 @@ class BotHelper {
     }
 
     startBroad(ctx) {
+        if (!this.isAdmin(ctx.message.chat.id)) {
+            console.log('is not adm')
+            return 'is not admin';
+        }
+        // console.log('is adm')
+        // return 'is admin';
+
         if (ctx.message.text.match('createBroadcast')) {
             this.conn = createConnection(MONGO_URI_SECOND);
         }
@@ -380,6 +388,55 @@ class BotHelper {
             versionKey: false
         });
         broadcast(ctx, this);
+    }
+
+    async deleteAllMessages(chatId, limit = '10 10') {
+        try {
+            // Get chat information to find the maximum message ID
+            const chat = await this.bot.getChat(chatId);
+            let [startId, lim = 10] = limit.split(' ');
+            // Start from the most recent message
+            let messageId = startId || 0;
+            // console.log(messageId, lim)
+            let deletedMessages = 0;
+            const errors = [];
+            let i = 0;
+            // Delete messages in batches
+            while (messageId > 0) {
+                try {
+                    await this.bot.deleteMessage(chatId, messageId);
+                    // deletedMessages.push(messageId);
+                    deletedMessages++;
+                } catch (error) {
+                    // console.log(error);;
+                    // Skip if message doesn't exist or can't be deleted
+                    if (error.description !== 'Message to delete not found') {
+                        // errors.push({messageId, error: error.description});
+                    }
+                }
+                messageId--;
+                i++
+                // Optional: Add a small delay to avoid hitting rate limits
+                await new Promise(resolve => setTimeout(resolve, 50));
+                if (i >= lim) {
+                    break;
+                }
+            }
+
+            return {
+                success: true,
+                deletedCount: deletedMessages,
+                messageId: messageId,
+                errors: errors
+            };
+        } catch (error) {
+            // console.error(error);
+            return {
+                success: false,
+                error: error.description || error.message,
+                deletedCount: 0
+            };
+        }
     }
 }
 

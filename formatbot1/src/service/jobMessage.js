@@ -18,6 +18,7 @@ const {
 const messages = require('../messages/format');
 const db = require('../api/utils/db');
 const keyboards = require('../keyboards/keyboards');
+const {dbKeys} = require("../config/consts");
 
 const group = TG_GROUP;
 const groupBugs = TG_BUGS_GROUP;
@@ -39,6 +40,9 @@ const jobMessage = (botHelper, browserWs, skip) => async task => {
     inline,
     w: isWorker,
     fromId,
+    pdf,
+    pdfReset,
+    pdfTitle,
   } = task;
 
   let {link} = task;
@@ -89,7 +93,7 @@ const jobMessage = (botHelper, browserWs, skip) => async task => {
         link = baseUrl;
       }
 
-      if (!isText) {
+      if (!isText && !pdf) {
         isFile = true;
         global.emptyTextCount = (global.emptyTextCount || 0) + 1;
       } else {
@@ -126,11 +130,12 @@ const jobMessage = (botHelper, browserWs, skip) => async task => {
           }
 
           if (parseStart) {
-            if (isWorker) {
-              //
-            } else {
-              // check domain
-
+            if (pdf) {
+              // console.log(pdf);
+              const pdfLink = await botHelper.bot.getFileLink(pdf);
+              // console.log(pdfLink);
+              params.pdf = pdfLink.href;
+              params.pdfTitle = pdfTitle;
             }
             ivTask = ivMaker.makeIvLink(link, params);
           }
@@ -178,6 +183,14 @@ const jobMessage = (botHelper, browserWs, skip) => async task => {
         ivLink = iv;
         const longStr = isLong ? `Long${pages ? ` ${pages}` : ''}` : '';
         IV_TITLE = `${title}\n`;
+        if (pdf) {
+          let pdfUpd = {url: chatId}
+          if (pdfReset) {
+            pdfUpd.$inc = {count: 1};
+            pdfUpd.af = 1;
+          } else pdfUpd.iv = 'pdf';
+          await db.updateOneLink(pdfUpd, db.getCol(dbKeys.counter));
+        }
         RESULT = messages.showIvMessage(longStr, iv, `${link}`, host);
         successIv = true;
       }
