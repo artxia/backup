@@ -41,11 +41,15 @@ func NewProxyPassHandler(args string) *ProxyPassHandler {
 }
 
 func (h *ProxyPassHandler) Handle(conn net.Conn) {
-	defer func() { _ = conn.Close() }()
+	if conn == nil {
+		return
+	}
+
+	defer conn.Close()
 
 	var err error
-
 	var dstConn net.Conn
+
 	if strings.HasPrefix(h.target, "unix:") {
 		dstConn, err = net.Dial("unix", h.target[5:])
 	} else {
@@ -55,28 +59,10 @@ func (h *ProxyPassHandler) Handle(conn net.Conn) {
 		log.Printf("fail to connect to %s :%v\n", h.target, err)
 		return
 	}
-	defer func() { _ = dstConn.Close() }()
+	defer dstConn.Close()
 
 	if h.proxyProtocol {
-		remoteAddr, remotePort, err := net.SplitHostPort(conn.RemoteAddr().String())
-		if err != nil {
-			log.Printf("fail to send proxy %s :%v\n", h.target, err)
-			return
-		}
-		localAddr, localPort, err := net.SplitHostPort(conn.LocalAddr().String())
-		if err != nil {
-			log.Printf("fail to send proxy %s :%v\n", h.target, err)
-			return
-		}
-
-		var ipVer string
-		if strings.Contains(remoteAddr, ":") {
-			ipVer = "6"
-		} else {
-			ipVer = "4"
-		}
-		_, err = fmt.Fprintf(dstConn, "PROXY TCP%s %s %s %s %s\r\n", ipVer, remoteAddr, localAddr, remotePort, localPort)
-		if err != nil {
+		if err := h.sendProxyProtocol(conn, dstConn); err != nil {
 			log.Printf("fail to send proxy %s :%v\n", h.target, err)
 			return
 		}
@@ -85,31 +71,36 @@ func (h *ProxyPassHandler) Handle(conn net.Conn) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	go func() {
-		if tcpConn, ok := dstConn.(*net.TCPConn); ok {
-			tcpConn.ReadFrom(conn)
-		} else {
-			doCopy(dstConn, conn, inboundBufferPool)
-		}
-		wg.Done()
-	}()
-	go func() {
-		if tcpConn, ok := dstConn.(*net.TCPConn); ok {
-			tcpConn.WriteTo(conn)
-		} else {
-			doCopy(conn, dstConn, outboundBufferPool)
-		}
-		wg.Done()
-	}()
+	go doCopy(dstConn, conn, inboundBufferPool, &wg)
+	go doCopy(conn, dstConn, outboundBufferPool, &wg)
 
 	wg.Wait()
 }
 
-func doCopy(dst io.Writer, src io.Reader, bufferPool *sync.Pool) {
+func (h *ProxyPassHandler) sendProxyProtocol(srcConn, dstConn net.Conn) error {
+	remoteAddr, remotePort, err := net.SplitHostPort(srcConn.RemoteAddr().String())
+	if err != nil {
+		return err
+	}
+	localAddr, localPort, err := net.SplitHostPort(srcConn.LocalAddr().String())
+	if err != nil {
+		return err
+	}
+
+	ipVer := "4"
+	if strings.Contains(remoteAddr, ":") {
+		ipVer = "6"
+	}
+	_, err = fmt.Fprintf(dstConn, "PROXY TCP%s %s %s %s %s\r\n", ipVer, remoteAddr, localAddr, remotePort, localPort)
+	return err
+}
+
+func doCopy(dst io.Writer, src io.Reader, bufferPool *sync.Pool, wg *sync.WaitGroup) {
 	buf := bufferPool.Get().([]byte)
-	defer bufferPool.Put(&buf)
+	defer bufferPool.Put(buf)
 	_, err := io.CopyBuffer(dst, src, buf)
 	if err != nil && err != io.EOF {
 		log.Printf("failed to proxy pass: %v\n", err)
 	}
+	wg.Done()
 }
