@@ -16,7 +16,8 @@ const db = require('../utils/db');
 const {
   commandCheck,
   timeout,
-  toUrl
+  toUrl,
+  isDateMoreADay,
 } = require('../utils');
 const {logger} = require('../utils/logger');
 const puppet = require('../utils/puppet');
@@ -177,9 +178,9 @@ const format = (bot, botHelper, skipCountBool) => {
     } =
     message || {};
     if (rplToMsg || message.audio) {
-      if (botHelper.isAdmin(message.from.id)) {
-          botHelper.sendAdmin(rplToMsg.message_id, message.from.id);
-      }
+      // if (message.from && botHelper.isAdmin(message.from.id)) {
+      //     botHelper.sendAdmin(rplToMsg.message_id, message.from.id);
+      // }
       return;
     }
     let {entities} = message;
@@ -201,9 +202,8 @@ const format = (bot, botHelper, skipCountBool) => {
     if (msg.document || (rpl && rpl.document)) {
         const {file_name, mime_type, file_id, file_size} = msg.document;
         if (
-            isAdm
-            && file_name.match(/.pdf$/)
-            && mime_type === 'application/pdf'
+            file_name.match(/.pdf$/) &&
+            mime_type === 'application/pdf'
         ) {
             if (file_size < 4e6) {
               const cnt = await db.get({
@@ -213,24 +213,32 @@ const format = (bot, botHelper, skipCountBool) => {
               });
               if (cnt) {
                   const now = Date.now();
-                  const oneDay = 24 * 60 * 60 * 1000;
-                  const isMoreThanADay = (now - cnt.updatedAt) > oneDay;
-                  if (isMoreThanADay) {
+                  if (isDateMoreADay(cnt.updatedAt)) {
                       pdfData.pdfReset = 1;
                   } else {
                       if (cnt.af >= 10) {
                           console.log('exceeded pdf');
                           let hours = Math.floor((now - cnt.updatedAt)/3_600_000);
-                          return ctx.reply('You have exceeded the maximum number of pdfs in 24 hours period, come back after ' + (24 - hours) + 'h');
+                          if (isChannelPost) {
+                            return;
+                          }
+                          return ctx.reply(
+                              'You have exceeded the maximum number of pdfs in 24 hours period, come back after ' + (24 - hours) + 'h'
+                          ).catch(e => {
+                            // skip
+                          });
                       }
                   }
               }
               pdfData.pdf = file_id;
-              pdfData.pdfTitle = file_name;
+              pdfData.pdfTitle = file_name.replace(/[^a-z\s0-9]/gi,'').replace(/\s/g,'_');
               text = PDF_LINK + encodeURI(file_name);
             } else {
               console.log('big pdf');
-              return ctx.reply('You have exceeded the maximum size of pdf (4mb) ');
+              if (isChannelPost) return;
+              return ctx.reply('You have exceeded the maximum size of pdf (4mb) ').catch(e => {
+                // skip
+              });
             }
         } else {
             return;
@@ -365,24 +373,27 @@ const format = (bot, botHelper, skipCountBool) => {
 
   bot.on('channel_post', ctx =>
     addToQueue(ctx)
-      .catch(e =>
-        botHelper.sendError(`tg err1: ${JSON.stringify(e)}`),
-      ),
+      .catch(e =>{
+        console.log(e);
+        botHelper.sendError(`tg err1: ${JSON.stringify(e)}`)
+      }),
   );
 
   bot.hears(/.*/, ctx =>
     addToQueue(ctx)
-      .catch(e =>
-        botHelper.sendError(`tg err2: ${JSON.stringify(e)}`),
-      ),
+      .catch(e =>{
+        console.log(e);
+        botHelper.sendError(`tg err2: ${JSON.stringify(e)}`)
+      }),
   );
 
-  bot.on('message', ctx =>
-    addToQueue(ctx)
-      .catch(e =>
-        botHelper.sendError(`tg err3: ${JSON.stringify(e)}`),
-      ),
-  );
+    bot.on('message', ctx =>
+        addToQueue(ctx)
+            .catch(e => {
+                console.log(e);
+                botHelper.sendError(`tg err3: ${JSON.stringify(e)}`)
+            }),
+    );
 
   let browserWs = null;
   if (!botHelper.config.no_puppet && !IS_PUPPET_DISABLED) {

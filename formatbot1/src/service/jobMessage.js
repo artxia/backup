@@ -3,7 +3,8 @@ const {logger} = require('../api/utils/logger');
 
 const {
   timeout,
-  checkData
+  checkData,
+  isDateMoreADay,
 } = require('../api/utils');
 const rabbitMq = require('./rabbitmq');
 const ivMaker = require('../api/utils/ivMaker');
@@ -153,8 +154,9 @@ const jobMessage = (botHelper, browserWs, skip) => async task => {
         await Promise.race([ivTimer, ivTask])
           .then(ivDataOrTimeout => {
             if (ivDataOrTimeout === TIMEOUT_EXCEEDED) {
-              if (groupBugs) {
+              if (groupBugs && isDateMoreADay(global.lastErrorLogTime)) {
                 botHelper.sendAdmin(`timedOut ${link}`, groupBugs);
+                global.lastErrorLogTime = +new Date();
               }
               timeOutLink = true;
             } else {
@@ -237,7 +239,7 @@ ${RESULT}`;
           await botHelper.sendIV(chatId, messageId, null, messageText, extra);
           toDelete = isChanMesId;
         }
-        await botHelper.delMessage(chatId, toDelete);
+        if (!pdf) await botHelper.delMessage(chatId, toDelete);
       } else if (successIv) {
         await botHelper.sendIVNew(chatId, messageText, extra);
         if (messageId) {
@@ -252,15 +254,21 @@ ${RESULT}`;
 
     if (!error) {
       let mark = inline ? 'i' : '';
-      if (isChanMesId) {
-        mark += 'c';
+      if (isChanMesId) mark += 'c';
+      if (ivFromDb) mark += ' db';
+
+      let logToGroup;
+      if (!global.lastLogTime) {
+        global.lastLogTime = +new Date();
+        logToGroup = true;
+      } else {
+        logToGroup = isDateMoreADay(global.lastLogTime);
       }
-      if (ivFromDb) {
-        mark += ' db';
-      }
-      const text = `${mark ? `${mark} ` : ''}[InstantView](${ivLink}) ${RESULT}\n${durationTime}`;
-      if (group) {
+      // now it disabled by default
+      if (group && logToGroup) {
+        const text = `${mark ? `${mark} ` : ''}[InstantView](${ivLink}) ${RESULT}\n${durationTime}`;
         botHelper.sendAdminMark(text, group);
+        global.lastLogTime = +new Date();
       }
     }
   } catch (e) {
@@ -278,7 +286,18 @@ ${RESULT}`;
         keyboards.resolvedBtn(resolveMsgId, chatId),
       );
     } else if (groupBugs) {
-      botHelper.sendAdmin(error, groupBugs);
+      // now it disabled by default
+      let logToGroup;
+      if (!global.lastErrorLogTime) {
+        global.lastErrorLogTime = +new Date();
+        logToGroup = true;
+      } else {
+        logToGroup = isDateMoreADay(global.lastErrorLogTime);
+      }
+      if (groupBugs && logToGroup) {
+        botHelper.sendAdmin(error, groupBugs);
+        global.lastErrorLogTime = +new Date();
+      }
     }
   }
 };
