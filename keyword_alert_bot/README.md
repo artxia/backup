@@ -11,7 +11,7 @@ Telegram关键字提醒机器人，用于实时监测频道/群组中的关键�
 
 确保普通Telegram账户能够在不需要验证的情况下加入指定群组。
 
-Warning: Demo bot使用过载，建议使用 Docker 镜像自行搭建。
+Warning: Demo bot使用过载，建议使用 Docker 镜像自部署
 
 
 👉  Features：
@@ -21,6 +21,7 @@ Warning: Demo bot使用过载，建议使用 Docker 镜像自行搭建。
 - [x] 支持多频道订阅 & 多关键字订阅
 - [x] 支持订阅群组消息
 - [x] 支持私有频道ID/邀请链接的消息订阅 
+- [x] 支持私有群组订阅
 
   1. https://t.me/+B8yv7lgd9FI0Y2M1  
   2. https://t.me/joinchat/B8yv7lgd9FI0Y2M1 
@@ -28,7 +29,6 @@ Warning: Demo bot使用过载，建议使用 Docker 镜像自行搭建。
 
 👉 Todo:
 
-- [x] 私有群组订阅和提醒
 - [ ] 私有频道消息提醒完整内容预览
 - [ ] 多账号支持
 - [ ] 扫描退出无用频道/群组
@@ -44,9 +44,9 @@ http://t.me/keyword_alert_bot
 
 ### 1. 配置文件
 
-#### config.yml.default --> config.yml
+#### config.yml.example --> config.yml
 
-将 config.yml.default 复制到本地并重命名为 config.yml，然后根据下面申请的 api 进行配置
+将 config.yml.example 复制到本地并重命名为 config.yml，然后根据下面申请的 api 进行配置
 
 #### Create Telelgram Account & API
 
@@ -59,11 +59,8 @@ https://t.me/BotFather  创建机器人
 
 ### 2. 🐳Docker
 
-配置好config.yml文件后，使用docker命令一键启动
 ```
-$ docker run -it --name keyword_alert_bot -v $(pwd)/config.yml:/app/config.yml   yha8897/keyword_alert_bot
-
-
+$ docker run -it --name keyword_alert_bot -v $(pwd)/config.yml:/app/config.yml -v $(pwd)/db/:/app/db/ yha8897/keyword_alert_bot
 
 Please enter the code you received: 12345
 Please enter your password: 
@@ -78,15 +75,34 @@ Signed in successfully as DEMO; remember to not break the ToS or you will risk a
 
 ```
 
-首次运行需要Telegram账户接收数字验证码，并输入密码（Telegram API触发），之后提示success即成功启动
+首次运行需要Telegram账户接收数字验证码，并输入密码（Telegram API触发），之后提示success即可
 
-之后可以直接根据容器名重启或者停止：
 
+其他
 ```
+# 重启
 $ docker restart keyword_alert_bot
+
+# 停止
 $ docker stop keyword_alert_bot
+
+# 数据库文件挂载路径: /app/db/.db
+$ docker run -it --name keyword_alert_bot  -v $(pwd)/config.yml:/app/config.yml -v $(pwd)/db/keyword_alert_bot.db:/app/db/.db yha8897/keyword_alert_bot
+
 ```
 
+### docker镜像更新
+
+避免数据丢失，容器更新前记得把docker中数据备份。如果已经把数据库文件挂载进容器 可以不用
+```
+$ docker cp keyword_alert_bot:/app/db/.db ~/keyword_alert_bot.db
+# 即可保存到: ~/keyword_alert_bot.db
+```
+
+持久化所有数据，避免权限问题 `--user root` 强制root权限执行
+```
+$ docker run -d --name keyword_alert_bot --user root  -v $(pwd)/config.yml:/app/config.yml -v $(pwd)/db/:/app/db/ -v $(pwd)/.tmp/:/app/.tmp/ -v $(pwd)/logs/:/app/logs/  yha8897/keyword_alert_bot
+```
 
 ## 💪Manual Build
 
@@ -101,16 +117,6 @@ $ pipenv shell
 $ python3 ./main.py
 ```
 
-### crontab （optional）
-
- - update telethon
-
-依赖库telethon可能存在旧版本不可用的情况或其他BUG，建议通过定时任务执行依赖更新。
-
-e.g. 
-```
-0 0 * * * cd /PATH/keyword_alert_bot && pipenv  telethon > /dev/null 2>&1
-```
 
 ## 📘Usage
 
@@ -147,18 +153,20 @@ e.g.
 
  BOT中所有订阅频道的总数超过 500。原因是BOT使用的Telegram演示账户限制导致。建议你自行部署
 
- ### 2. 查看日志发现个别群组无法接收消息，而软件客户端正常接收
+ ### 2. sqlite3.OperationalError: unable to open database file
+
+  如果是docker镜像启动，由于内部使用nonroot账户 需要授权挂载文件权限 或者直接使用`--user root`参数
+  ```
+  $ docker run -it --name keyword_alert_bot --user root  -v $(pwd)/config.yml:/app/config.yml -v $(pwd)/db/:/app/db/ -v $(pwd)/.tmp/:/app/.tmp/ -v $(pwd)/logs/:/app/logs/  yha8897/keyword_alert_bot
+  ```
+
+
+ ### 3. 查看日志发现个别群组无法接收消息，而软件客户端正常接收
 
  🤔尝试更新telethon到最新版本或者稳定的1.24.0版本
 
- ### 3. 订阅群组消息，机器人没任何反应
+ ### 4. 订阅群组消息，机器人没任何反应
  https://github.com/Hootrix/keyword_alert_bot/issues/20
-
- ### 4. ModuleNotFoundError: No module named 'asyncstdlib', No module named '...'
-
-```
-$ pipenv  install
-```
 
  ### 5. 同时存在多关键字如何匹配
 
