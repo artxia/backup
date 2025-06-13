@@ -17,7 +17,7 @@ from telethon.tl.types import PeerChannel
 from telethon.extensions import markdown,html
 from asyncstdlib.functools import lru_cache as async_lru_cache
 import asyncio
-from utils.common import is_allow_access,banner,is_msg_block,get_event_chat_username,get_event_chat_username_list
+from utils.common import is_allow_access,banner,is_msg_block,get_event_chat_username,get_event_chat_username_list,build_sublist_msg
 from utils import db_model as utils
 
 
@@ -54,7 +54,26 @@ def js_to_py_re(rx):
   return lambda L: obj(query, L, flags=regex.I if 'i' in params else 0)
 
 def is_regex_str(string):
-  return regex.search(r'^/.*/[a-zA-Z]*?$',string)
+  """
+    正则表达式严格校验
+    :param rule: 输入规则字符串
+    :return: True 如果为合法正则语法
+  """
+  # return regex.search(r'^/.*/[a-zA-Z]*?$',string)
+  try:
+      query, params = string[1:].rsplit('/', 1)
+      if query:
+        regex.compile(query)  # 编译正则表达式
+        return True
+  except:
+      return False
+  
+  return False
+
+def is_regex_str_fuzzy(rule):
+  return is_regex_str(rule)
+  # match = regex.fullmatch(r"^/(.+)/([a-zA-Z]*)$", rule)
+  # return bool(match)
 
 @async_lru_cache(maxsize=None)
 async def client_get_entity(entity,_):
@@ -255,7 +274,7 @@ where ({' OR '.join(condition_strs)}) and l.status = 0  order by l.create_time  
               re_update.execute()
             
             chat_title = event_chat_username or event.chat.title
-            if is_regex_str(keywords):# 输入为正则字符串
+            if is_regex_str_fuzzy(keywords):# 输入为正则字符串
               regex_match = js_to_py_re(keywords)(text)# 进行正则匹配 只支持ig两个flag
               if isinstance(regex_match,regex.Match):#search()结果
                 regex_match = [regex_match.group()]
@@ -389,6 +408,9 @@ def parse_full_command(command, keywords, channels):
         [type]: [description]
   """
   keywords_list = keywords.split(',')
+  if is_regex_str(keywords):# 正则字符串
+    keywords_list = [keywords]
+
   channels_list = channels.split(',')
   res = {}
   for keyword in keywords_list:
@@ -501,7 +523,7 @@ async def join_channel_insert_subscribe(user_id,keyword_channel_list):
       re_update = utils.db.user_subscribe_list.update(status = 0 ).where(utils.User_subscribe_list.id == find.id)#更新状态
       re_update = re_update.execute()# 更新成功返回1，不管是否重复执行
       if re_update:
-        result.append((keyword,channel_name,_chat_id))
+        result.append((find.id,keyword,channel_name,_chat_id))
     else:
       insert_res = utils.db.user_subscribe_list.create(**{
         'user_id':user_id,
@@ -511,7 +533,7 @@ async def join_channel_insert_subscribe(user_id,keyword_channel_list):
         'chat_id':_chat_id
       })
       if insert_res:
-        result.append((keyword,channel_name,_chat_id))
+        result.append((insert_res.id,keyword,channel_name,_chat_id))
   return result
 
 async def leave_channel(channel_name):
@@ -601,7 +623,9 @@ async def subscribe(event):
   text = regex.sub(r'\s*,\s*',',',text) # 确保英文逗号间隔中间都没有空格  如 "https://t.me/xiaobaiup, https://t.me/com9ji"
   splitd = [i for i in regex.split(r'\s+',text) if i]# 删除空元素
   if len(splitd) <= 1:
-    await event.respond(r'输入需要订阅的关键字,支持js正则语法：`/[\s\S]*/ig`\n\nInput the keyword that needs to subscribe, support JS regular syntax：`/[\s\S]*/ig`')
+    msg = "输入需要订阅的关键字,支持js正则语法：\n`/[\s\S]*/ig`\n\nInput the keyword that needs to subscribe, support JS regular syntax：\n`/[\s\S]*/ig`"
+    _text, entities = markdown.parse(msg)
+    await event.respond(_text,formatting_entities=entities)
     cache.set('status_{}'.format(chat_id),{'current_status':'/subscribe keywords','record_value':text},expire=5*60)#设置5m后过期
   elif len(splitd)  == 3:
     command, keywords, channels = splitd
@@ -611,15 +635,16 @@ async def subscribe(event):
         await event.respond(result,parse_mode = None) # 提示错误消息
     else:
       msg = ''
-      for key,channel,_chat_id in result:
+      for subscribeid,key,channel,_chat_id in result:
         if _chat_id:
           _chat_id, peer_type = telethon_utils.resolve_id(int(_chat_id))
 
         if not channel:
           channel = f'<a href="t.me/c/{_chat_id}/-1">{_chat_id}</a>'
-        msg += f'keyword:{key}  channel:{channel}\n'
+        msg += build_sublist_msg(subscribeid,'Keywords',key,channel)
+
       if msg:
-        msg = 'success subscribe:\n'+msg 
+        msg = 'success subscribe:\n\n'+msg 
         text, entities = html.parse(msg)# 解析超大文本 分批次发送 避免输出报错
         for text, entities in telethon_utils.split_text(text, entities):
           await event.respond(text,formatting_entities=entities) 
@@ -644,7 +669,8 @@ async def unsubscribe_all(event):
     msg = ''
     for keywords,channel_name,chat_id in _user_subscribe_list:
       channel_url = get_channel_url(channel_name,chat_id)
-      msg += 'keyword: {}\nchannel: {}\n---\n'.format(keywords,channel_url)
+      msg += f'Keyword: {keywords}\nChannel: {channel_url}\n{"---"*12}\n'
+
 
     re_update = utils.db.user_subscribe_list.update(status = 1 ).where(utils.User_subscribe_list.user_id == user_id)#更新状态
     re_update = re_update.execute()# 更新成功返回1，不管是否重复执行
@@ -865,7 +891,7 @@ async def _list(event):
     if find:
       msg = ''
       for sub_id,keywords,channel_name,chat_id in find:
-        _type = 'regex' if is_regex_str(keywords) else 'keyword'
+        _type = 'regex' if is_regex_str_fuzzy(keywords) else 'keyword'
         channel_url = get_channel_url(channel_name,chat_id)
         
         channel_entity = None # TODO 不执行实体信息读取  否则会无响应
@@ -908,7 +934,7 @@ async def _list(event):
             channel_username = f'channel username: {channel_name}\n'
 
         channel_url = f'<a href="{channel_url}-1">{"https://t.me/"+channel_name if channel_name else channel_url}</a>'
-        msg += f'id:{sub_id}\n{_type}: {keywords}\n{channel_title}{channel_username}channel url: {channel_url}\n---\n'
+        msg += build_sublist_msg(sub_id,_type,keywords,channel_url,channel_title,channel_username)
       
       text, entities = html.parse(msg)# 解析超大文本 分批次发送 避免输出报错
       for text, entities in telethon_utils.split_text(text, entities):
@@ -951,16 +977,17 @@ async def common(event):
         await event.respond(result,parse_mode = None) # 提示错误消息
       else:
         msg = ''
-        for key,channel,_chat_id in result:
+        for subscribeid,key,channel,_chat_id in result:
           if _chat_id:
             _chat_id, peer_type = telethon_utils.resolve_id(int(_chat_id))
           
           if not channel:
             channel = f'<a href="t.me/c/{_chat_id}/-1">{_chat_id}</a>'
-          msg += f'keyword:{key}  channel:{channel}\n'
+          msg += build_sublist_msg(subscribeid,'Keywords',key,channel)
+
         if msg:
           # await event.respond('success subscribe:\n'+msg,parse_mode = None)
-          msg = 'success subscribe:\n'+msg 
+          msg = 'success subscribe:\n\n'+msg 
           text, entities = html.parse(msg)# 解析超大文本 分批次发送 避免输出报错
           for text, entities in telethon_utils.split_text(text, entities):
             await event.respond(text,formatting_entities=entities) 

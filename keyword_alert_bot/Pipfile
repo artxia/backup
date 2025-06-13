@@ -6,7 +6,7 @@ verify_ssl = true
 [dev-packages]
 
 [packages]
-telethon = "===1.29.3"
+telethon = "*"
 pysocks = "*"
 peewee = "*"
 pyyaml = "*"

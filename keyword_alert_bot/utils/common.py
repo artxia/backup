@@ -118,4 +118,6 @@ def get_event_chat_username_list(event_chat):
   return list(set(result))
     
 
-
+def build_sublist_msg(subscribeid,keywords_type,keywords,channel_url,channel_title = '',channel_username = ''):
+  msg = f'ID: <code>{subscribeid}</code>\n{keywords_type.capitalize()}: <code>{keywords}</code>\nChannel: {" ".join([channel_title,channel_username,channel_url]).strip()}\n{"---"*12}\n'
+  return msg
