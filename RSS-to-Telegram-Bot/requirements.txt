@@ -6,7 +6,7 @@ aiographfix==0.2.2
 # feed parsing
 feedparser==6.0.11  # feedparser@git+https://github.com/Rongronggg9/feedparser.git@develop
 listparser[lxml]==0.20
-pillow==11.2.1
+pillow==11.3.0
 beautifulsoup4==4.12.3
 lxml==5.4.0
 rapidfuzz==3.13.0
@@ -21,7 +21,7 @@ tortoise-orm[accel]==0.25.1
 aerich==0.8.1
 
 # network
-aiohttp[speedups]==3.12.11
+aiohttp[speedups]==3.12.14
 aiohttp-socks==0.10.1
 aiohttp-retry==2.9.1
 python-socks[asyncio]==2.7.1
@@ -32,11 +32,11 @@ yarl==1.20.1
 propcache==0.3.2
 colorlog==6.9.0
 APScheduler==3.11.0
-python-dotenv==1.1.0
-multidict==6.4.4
+python-dotenv==1.1.1
+multidict==6.6.3
 asyncstdlib==3.13.1
-cachetools==6.0.0
+cachetools==6.1.0
 CJKwrap==2.2
-typing-extensions==4.13.2
+typing-extensions==4.14.1
 uvloop==0.21.0; sys_platform!='win32' and sys_platform!='cygwin' and sys_platform!='cli'
 isal==1.7.2; platform_machine=='x86_64' or platform_machine=='AMD64' or platform_machine=='aarch64'
