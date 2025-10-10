@@ -38,7 +38,7 @@ const exp6 = /^(?:https?:\/\/)?github\.com\/.+?\/.+?\/tags.*$/i
  */
 function makeRes(body, status = 200, headers = {}) {
     headers['access-control-allow-origin'] = '*'
-    return new Response(body, {status, headers})
+    return new Response(body, { status, headers })
 }
 
 
@@ -82,8 +82,8 @@ async function fetchHandler(e) {
         return Response.redirect('https://' + urlObj.host + PREFIX + path, 301)
     }
     // cfworker 会把路径中的 `//` 合并成 `/`
-    path = urlObj.href.substr(urlObj.origin.length + PREFIX.length).replace(/^https?:\/+/, 'https://')
-    if (path.search(exp1) === 0 || path.search(exp5) === 0 || path.search(exp6) === 0 || path.search(exp3) === 0 || path.search(exp4) === 0) {
+    path = urlObj.href.slice(urlObj.origin.length + PREFIX.length).replace(/^https?:\/+/, 'https://')
+    if (path.search(exp1) === 0 || path.search(exp5) === 0 || path.search(exp6) === 0 || path.search(exp3) === 0) {
         return httpHandler(req, path)
     } else if (path.search(exp2) === 0) {
         if (Config.jsdelivr) {
@@ -94,8 +94,13 @@ async function fetchHandler(e) {
             return httpHandler(req, path)
         }
     } else if (path.search(exp4) === 0) {
-        const newUrl = path.replace(/(?<=com\/.+?\/.+?)\/(.+?\/)/, '@$1').replace(/^(?:https?:\/\/)?raw\.(?:githubusercontent|github)\.com/, 'https://cdn.jsdelivr.net/gh')
-        return Response.redirect(newUrl, 302)
+        if (Config.jsdelivr) {
+            const newUrl = path.replace(/(?<=com\/.+?\/.+?)\/(.+?\/)/, '@$1').replace(/^(?:https?:\/\/)?raw\.(?:githubusercontent|github)\.com/, 'https://cdn.jsdelivr.net/gh')
+            return Response.redirect(newUrl, 302)
+        }
+        else {
+            return httpHandler(req, path)
+        }
     } else {
         return fetch(ASSET_URL + path)
     }
@@ -127,7 +132,7 @@ function httpHandler(req, pathname) {
         }
     }
     if (!flag) {
-        return new Response("blocked", {status: 403})
+        return new Response("blocked", { status: 403 })
     }
     if (urlStr.search(/^https?:\/\//) !== 0) {
         urlStr = 'https://' + urlStr
