@@ -1,11 +1,10 @@
 import html
 from time import time
-from typing import Optional, List, Tuple, Set, Union
+from typing import Optional, List, Tuple, Set, Union, cast, Any
 from traceback import format_exc
 from argparse import ArgumentParser
 import shlex
 
-import redis
 import whoosh.index
 from telethon import TelegramClient, events, Button
 from telethon.tl.types import BotCommand, BotCommandScopePeer, BotCommandScopeDefault
@@ -15,8 +14,14 @@ import telethon.errors.rpcerrorlist as rpcerrorlist
 from redis import Redis
 from redis.exceptions import ConnectionError as RedisConnectionError
 
-from .common import CommonBotConfig, get_logger, get_share_id, remove_first_word, brief_content
-from .backend_bot import BackendBot, EntityNotFoundError
+from .common import (
+    CommonBotConfig,
+    get_logger,
+    get_share_id,
+    remove_first_word,
+)
+from .backend_bot import BackendBot
+from .common import EntityNotFoundError
 from .indexer import SearchResult
 
 
@@ -25,16 +30,20 @@ class BotFrontendConfig:
     def _parse_redis_cfg(redis_cfg: str) -> Tuple[str, int]:
         colon_idx = redis_cfg.index(':')
         if colon_idx < 0:
-            raise ValueError("No colon in redis host config")
-        return redis_cfg[:colon_idx], int(redis_cfg[colon_idx + 1:])
+            raise ValueError('No colon in redis host config')
+        return redis_cfg[:colon_idx], int(redis_cfg[colon_idx + 1 :])
 
     def __init__(self, **kw):
         self.bot_token: str = kw['bot_token']
-        self.admin: Union[int, str] = kw['admin_id']
+        admin_id = kw['admin_id']
+        if not isinstance(admin_id, int):
+            raise ValueError(f'admin_id must be an integer or string representation of integer, got {admin_id}')
+        self.admin: int = admin_id
         self.page_len: int = kw.get('page_len', 10)
         self.no_redis: bool = kw.get('no_redis', False)
-        self.redis_host: Tuple[str, int] = None if self.no_redis else \
-            self._parse_redis_cfg(kw.get('redis', 'localhost:6379'))
+        self.redis_host: Optional[Tuple[str, int]] = (
+            None if self.no_redis else self._parse_redis_cfg(kw.get('redis', 'localhost:6379'))
+        )
 
         self.private_mode: bool = kw.get('private_mode', False)
         self.private_whitelist: Set[int] = set(kw.get('private_whitelist', []))
@@ -48,12 +57,12 @@ class FakeRedis:
     """
 
     def __init__(self):
-        self._data = {}
+        self._data: dict[str, str] = {}
 
-    def get(self, key):
+    def get(self, key) -> Optional[str]:
         return self._data.get(key)
 
-    def set(self, key, val):
+    def set(self, key: str, val: str):
         self._data[key] = val
 
     def ping(self):
@@ -72,19 +81,29 @@ class BotFrontend:
     - search_page={page_number}
     """
 
-    def __init__(self, common_cfg: CommonBotConfig, cfg: BotFrontendConfig, frontend_id: str, backend: BackendBot):
+    def __init__(
+        self,
+        common_cfg: CommonBotConfig,
+        cfg: BotFrontendConfig,
+        frontend_id: str,
+        backend: BackendBot,
+    ):
         self.backend = backend
         self.id = frontend_id
+        # TelegramClient accepts None for proxy even though type stubs don't reflect it
         self.bot = TelegramClient(
             str(common_cfg.session_dir / f'frontend_{self.id}.session'),
             api_id=common_cfg.api_id,
             api_hash=common_cfg.api_hash,
-            proxy=common_cfg.proxy
+            proxy=cast(Any, common_cfg.proxy),
         )
         self._cfg = cfg
-        self._redis: Union[redis.client.Redis, FakeRedis] = FakeRedis() \
-            if cfg.no_redis else \
-            Redis(host=cfg.redis_host[0], port=cfg.redis_host[1], decode_responses=True)
+        if cfg.no_redis:
+            self._redis: Union[Redis, FakeRedis] = FakeRedis()
+        else:
+            # redis_host is guaranteed to be not None here because no_redis is False
+            assert cfg.redis_host is not None
+            self._redis = Redis(host=cfg.redis_host[0], port=cfg.redis_host[1], decode_responses=True)
         self._logger = get_logger(f'bot-frontend:{frontend_id}')
         self._admin = None  # to be initialized in start()
         self.username = None
@@ -105,17 +124,22 @@ class BotFrontend:
             self._logger.critical(f'Cannot connect to redis server {self._cfg.redis_host}: {e}')
             exit(1)
 
-        self._logger.info(f'Start init frontend bot')
-        self._logger.info(f'Start login to bot')
-        await self.bot.start(bot_token=self._cfg.bot_token)
-        self.username = (await self.bot.get_me()).username
+        self._logger.info('Start init frontend bot')
+        self._logger.info('Start login to bot')
+        # Telethon's type stubs don't properly annotate start() as async, but it is at runtime
+        await cast(Any, self.bot.start(bot_token=self._cfg.bot_token))
+        # Telethon's type stubs don't expose username attribute from get_me()
+        me = await self.bot.get_me()
+        self.username = cast(Any, me).username
         self._logger.info(f'Bot (@{self.username}) account login ok')
         await self._register_commands()
-        self._logger.info(f'Register bot commands ok')
+        self._logger.info('Register bot commands ok')
         self._register_hooks()
 
         # prevent chat with bot being indexed
-        self.backend.excluded_chats.add((await self.bot.get_me()).id)
+        # Telethon's type stubs don't expose id attribute from get_me()
+        bot_me = await self.bot.get_me()
+        self.backend.excluded_chats.add(cast(Any, bot_me).id)
 
         try:
             msg_head = 'bot 初始化完成\n\n'
@@ -131,9 +155,10 @@ class BotFrontend:
             data = event.data.decode('utf-8').split('=')
             if data[0] == 'search_page':
                 page_num = int(data[1])
-                q = self._redis.get(f'{self.id}:query_text:{event.chat_id}:{event.message_id}')
-                chats = self._redis.get(f'{self.id}:query_chats:{event.chat_id}:{event.message_id}')
-                chats = chats and [int(chat_id) for chat_id in chats.split(',')]
+                # Both Redis and FakeRedis have synchronous get() methods
+                q: Optional[str] = cast(Any, self._redis.get(f'{self.id}:query_text:{event.chat_id}:{event.message_id}'))
+                chats_str: Optional[str] = cast(Any, self._redis.get(f'{self.id}:query_chats:{event.chat_id}:{event.message_id}'))
+                chats: Optional[List[int]] = [int(chat_id) for chat_id in chats_str.split(',')] if chats_str else None
                 self._logger.info(f'Query [{q}] (chats={chats}) turned to page {page_num}')
                 if q:
                     start_time = time()
@@ -146,7 +171,7 @@ class BotFrontend:
                 chat_id = int(data[1])
                 chat_name = await self.backend.translate_chat_id(chat_id)
                 await event.edit(f'回复本条消息以对 {chat_name} ({chat_id}) 进行操作')
-                self._redis.set(f'{self.id}:select_chat:{event.chat_id}:{event.message_id}', chat_id)
+                self._redis.set(f'{self.id}:select_chat:{event.chat_id}:{event.message_id}', str(chat_id))
             else:
                 raise RuntimeError(f'unknown callback data: {event.data}')
         await event.answer()
@@ -207,7 +232,7 @@ class BotFrontend:
             max_id = args.max or 1 << 31 - 1
             chat_ids = await self._chat_ids_from_args(args.chats) or self._query_selected_chat(event)
             if not chat_ids:
-                await event.reply(f'错误：请至少指定一个会话')
+                await event.reply('错误：请至少指定一个会话')
                 return
             for chat_id in chat_ids:
                 self._logger.info(f'start downloading history of {chat_id} (min={min_id}, max={max_id})')
@@ -218,7 +243,7 @@ class BotFrontend:
             args = self.chat_ids_parser.parse_args(shlex.split(text)[1:])
             chat_ids = await self._chat_ids_from_args(args.chats) or self._query_selected_chat(event)
             if not chat_ids:
-                await event.reply(f'错误：请至少指定一个会话')
+                await event.reply('错误：请至少指定一个会话')
                 return
             for chat_id in chat_ids:
                 self._logger.info(f'add {chat_id} to monitored_chat')
@@ -233,8 +258,10 @@ class BotFrontend:
             selected_chat_id = self._query_selected_chat(event)
             if len(args.chats) == 0 and selected_chat_id is None:
                 await event.reply(
-                    f'请使用 <pre>/clear all</pre> 以清除全部索引，'
-                    f'或者使用 <pre>/clear [CHAT ...]</pre> 指定需要删除的对话的名称或 ID', parse_mode='html')
+                    '请使用 <pre>/clear all</pre> 以清除全部索引，'
+                    '或者使用 <pre>/clear [CHAT ...]</pre> 指定需要删除的对话的名称或 ID',
+                    parse_mode='html',
+                )
                 return
             if len(args.chats) == 1 and args.chats[0] == 'all':
                 chat_ids = None  # None means clear all
@@ -245,15 +272,17 @@ class BotFrontend:
             self.backend.clear(chat_ids)
             if chat_ids:
                 for chat_id in chat_ids:
-                    await event.reply(f'{await self.backend.format_dialog_html(chat_id)} 的索引已清除',
-                                      parse_mode='html')
+                    await event.reply(
+                        f'{await self.backend.format_dialog_html(chat_id)} 的索引已清除',
+                        parse_mode='html',
+                    )
             else:
                 await event.reply('全部索引已清除')
 
         elif text.startswith('/refresh_chat_names'):
-            msg = await event.reply(f'正在刷新后端的对话名称缓存')
+            msg = await event.reply('正在刷新后端的对话名称缓存')
             await self.backend.session.refresh_translate_table()
-            await msg.edit(f'对话名称缓存刷新完成')
+            await msg.edit('对话名称缓存刷新完成')
 
         elif text.startswith('/find_chat_id'):
             q = text[14:].strip()
@@ -282,7 +311,7 @@ class BotFrontend:
             first_space = q.find(' ')
             if first_space < 0:
                 first_space = len(q)
-            q = q[first_space + 1:]
+            q = q[first_space + 1 :]
 
         if len(q) == 0:
             # do not respond to empty query
@@ -300,7 +329,10 @@ class BotFrontend:
 
         self._redis.set(f'{self.id}:query_text:{event.chat_id}:{msg.id}', q)
         if chats:
-            self._redis.set(f'{self.id}:query_chats:{event.chat_id}:{msg.id}', ','.join(map(str, chats)))
+            self._redis.set(
+                f'{self.id}:query_chats:{event.chat_id}:{msg.id}',
+                ','.join(map(str, chats)),
+            )
 
     async def _download_history(self, event: events.NewMessage.Event, chat_id: int, min_id: int, max_id: int):
         chat_html = await self.backend.format_dialog_html(chat_id)
@@ -309,7 +341,8 @@ class BotFrontend:
             await event.reply(
                 f'错误: {chat_html} 的索引非空，下载历史会导致索引重复消息，'
                 f'请先 /clear 清除索引，或者通过 --min, --max 参数指定索引范围',
-                parse_mode='html')
+                parse_mode='html',
+            )
             return
         cnt: int = 0
         prog_msg: Optional[TgMessage] = None
@@ -324,7 +357,9 @@ class BotFrontend:
                     try:
                         await prog_msg.edit(prog_text, parse_mode='html')
                     except rpcerrorlist.FloodWaitError:
-                        self._logger.info(f'FloodWaitError when trying to edit message of download_history ({cnt=}), ignore')
+                        self._logger.info(
+                            f'FloodWaitError when trying to edit message of download_history ({cnt=}), ignore'
+                        )
                         pass
                 else:
                     prog_msg = await event.reply(prog_text, parse_mode='html')
@@ -348,16 +383,19 @@ class BotFrontend:
                 return
             if sender.is_self:
                 return
-            if self._cfg.private_mode \
-                    and sender.id not in self._cfg.private_whitelist \
-                    and get_share_id(event.chat_id) not in self._cfg.private_whitelist:
-                await event.reply(f'由于隐私设置，您无法使用本 bot')
+            if (
+                self._cfg.private_mode
+                and sender.id not in self._cfg.private_whitelist
+                and event.chat_id is not None
+                and get_share_id(event.chat_id) not in self._cfg.private_whitelist
+            ):
+                await event.reply('由于隐私设置，您无法使用本 bot')
                 return
             if event.chat_id != self._admin:
                 try:
                     await self._normal_msg_handler(event)
                 except whoosh.index.LockError:
-                    await event.reply(f'当前索引正在被写入，请等待现有写入操作完成')
+                    await event.reply('当前索引正在被写入，请等待现有写入操作完成')
                 except EntityNotFoundError as e:
                     await event.reply(f'未找到 id 为 "{e.entity}" 的对话或用户')
                 except Exception as e:
@@ -369,16 +407,23 @@ class BotFrontend:
                 except EntityNotFoundError as e:
                     await event.reply(f'未找到 id 为 "{e.entity}" 的对话或用户')
                 except Exception as e:
-                    await event.reply(f'错误:\n\n<pre>{html.escape(format_exc())}</pre>', parse_mode='html')
+                    await event.reply(
+                        f'错误:\n\n<pre>{html.escape(format_exc())}</pre>',
+                        parse_mode='html',
+                    )
                     raise e
 
     def _query_selected_chat(self, event: events.NewMessage.Event) -> Optional[List[int]]:
         msg: TgMessage = event.message
         if msg.reply_to:
+            # Telethon's type stubs don't properly define reply_to structure
+            reply_to_msg_id = cast(Any, msg.reply_to).reply_to_msg_id
+            # Both Redis and FakeRedis have synchronous get() methods
             redis_query_result = self._redis.get(
-                f'{self.id}:select_chat:{event.chat_id}:{msg.reply_to.reply_to_msg_id}'
+                f'{self.id}:select_chat:{event.chat_id}:{reply_to_msg_id}'
             )
             if redis_query_result:
+                assert isinstance(redis_query_result, str)
                 return [int(redis_query_result)]
         return None
 
@@ -389,37 +434,35 @@ class BotFrontend:
         except ValueError as e:
             self._logger.critical(
                 f'Admin ID {self._cfg.admin} is invalid, or you have not had any conversation with '
-                f'the bot yet. Please send a "/start" to the bot and retry. Exiting...', exc_info=e)
+                f'the bot yet. Please send a "/start" to the bot and retry. Exiting...',
+                exc_info=e,
+            )
             exit(-1)
 
         admin_commands = [
-            BotCommand(command="download_chat", description='[--min=MIN] [--max=MAX] [CHAT...] '
-                                                            '下载并索引会话的历史消息，并将其加入监听列表'),
-            BotCommand(command="monitor_chat", description='CHAT... 将会话加入监听列表'),
-            BotCommand(command="stat", description='查询后端索引状态'),
-            BotCommand(command="clear", description='[CHAT...] 清除索引'),
-            BotCommand(command="find_chat_id", description='KEYWORD 根据关键词获取聊天 id'),
-            BotCommand(command="refresh_chat_names", description='刷新对话名称缓存'),
+            BotCommand(
+                command='download_chat',
+                description='[--min=MIN] [--max=MAX] [CHAT...] 下载并索引会话的历史消息，并将其加入监听列表',
+            ),
+            BotCommand(command='monitor_chat', description='CHAT... 将会话加入监听列表'),
+            BotCommand(command='stat', description='查询后端索引状态'),
+            BotCommand(command='clear', description='[CHAT...] 清除索引'),
+            BotCommand(command='find_chat_id', description='KEYWORD 根据关键词获取聊天 id'),
+            BotCommand(command='refresh_chat_names', description='刷新对话名称缓存'),
         ]
         commands = [
-            BotCommand(command="random", description='随机返回一条已索引消息'),
-            BotCommand(command="chats", description='选择对话'),
-            BotCommand(command="search", description='搜索消息'),
+            BotCommand(command='random', description='随机返回一条已索引消息'),
+            BotCommand(command='chats', description='选择对话'),
+            BotCommand(command='search', description='搜索消息'),
         ]
         await self.bot(
             SetBotCommandsRequest(
                 scope=BotCommandScopePeer(admin_input_peer),
                 lang_code='',
-                commands=admin_commands + commands
+                commands=admin_commands + commands,
             )
         )
-        await self.bot(
-            SetBotCommandsRequest(
-                scope=BotCommandScopeDefault(),
-                lang_code='',
-                commands=commands
-            )
-        )
+        await self.bot(SetBotCommandsRequest(scope=BotCommandScopeDefault(), lang_code='', commands=commands))
 
     async def _render_response_text(self, result: SearchResult, used_time: float):
         string_builder = [f'共搜索到 {result.total_results} 个结果，用时 {used_time: .3} 秒：\n\n']
@@ -433,13 +476,9 @@ class BotFrontend:
         return ''.join(string_builder)
 
     def _render_respond_buttons(self, result, cur_page_num):
-        former_page, former_text = ('', ' ') \
-            if cur_page_num == 1 \
-            else (f'search_page={cur_page_num - 1}', '上一页⬅️')
-        next_page, next_text = ('', ' ') \
-            if result.is_last_page \
-            else (f'search_page={cur_page_num + 1}', '➡️下一页')
-        total_pages = - (- result.total_results // self._cfg.page_len)  # use floor to simulate ceil function
+        former_page, former_text = ('', ' ') if cur_page_num == 1 else (f'search_page={cur_page_num - 1}', '上一页⬅️')
+        next_page, next_text = ('', ' ') if result.is_last_page else (f'search_page={cur_page_num + 1}', '➡️下一页')
+        total_pages = -(-result.total_results // self._cfg.page_len)  # use floor to simulate ceil function
         return [
             [
                 Button.inline(former_text, former_page),

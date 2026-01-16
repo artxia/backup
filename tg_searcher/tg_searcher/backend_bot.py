@@ -1,6 +1,6 @@
 import html
 from datetime import datetime
-from typing import Optional, List, Set, Dict
+from typing import Optional, List, Set, Dict, Union
 
 import telethon.errors.rpcerrorlist
 from telethon import events
@@ -8,28 +8,39 @@ from telethon.tl.patched import Message as TgMessage
 from telethon.tl.types import User
 
 from .indexer import Indexer, IndexMsg
-from .common import CommonBotConfig, escape_content, get_share_id, get_logger, format_entity_name, brief_content, \
-    EntityNotFoundError
+from .common import (
+    CommonBotConfig,
+    escape_content,
+    get_share_id,
+    get_logger,
+    format_entity_name,
+    brief_content,
+)
 from .session import ClientSession
 
 
 class BackendBotConfig:
     def __init__(self, **kw):
         self.monitor_all = kw.get('monitor_all', False)
-        self.excluded_chats: Set[int] = set(get_share_id(chat_id)
-                                            for chat_id in kw.get('excluded_chats', []))
+        self.excluded_chats: Set[int] = set(get_share_id(chat_id) for chat_id in kw.get('excluded_chats', []))
 
 
 class BackendBot:
-    def __init__(self, common_cfg: CommonBotConfig, cfg: BackendBotConfig,
-                 session: ClientSession, clean_db: bool, backend_id: str):
+    def __init__(
+        self,
+        common_cfg: CommonBotConfig,
+        cfg: BackendBotConfig,
+        session: ClientSession,
+        clean_db: bool,
+        backend_id: str,
+    ):
         self.id: str = backend_id
         self.session = session
 
         self._logger = get_logger(f'bot-backend:{backend_id}')
         self._cfg = cfg
         if clean_db:
-            self._logger.info(f'Index will be cleaned')
+            self._logger.info('Index will be cleaned')
         self._indexer: Indexer = Indexer(common_cfg.index_dir / backend_id, clean_db)
 
         # on startup, all indexed chats are added to monitor list
@@ -38,7 +49,7 @@ class BackendBot:
         self.newest_msg: Dict[int, IndexMsg] = dict()
 
     async def start(self):
-        self._logger.info(f'Init backend bot')
+        self._logger.info('Init backend bot')
 
         for chat_id in self.monitored_chats:
             try:
@@ -90,7 +101,7 @@ class BackendBot:
             self._indexer.add_document(msg, writer)
             self.newest_msg[share_id] = msg
         writer.commit()
-        self._logger.info(f'write index commit ok')
+        self._logger.info('write index commit ok')
 
     def clear(self, chat_ids: Optional[List[int]] = None):
         if chat_ids is not None:
@@ -112,7 +123,7 @@ class BackendBot:
         sb = [  # string builder
             f'后端 "{self.id}"（session: "{self.session.name}"）总消息数: <b>{self._indexer.ix.doc_count()}</b>\n\n'
         ]
-        overflow_msg = f'\n\n由于 Telegram 消息长度限制，部分对话的统计信息没有展示'
+        overflow_msg = '\n\n由于 Telegram 消息长度限制，部分对话的统计信息没有展示'
 
         def append_msg(msg_list: List[str]):  # return whether overflow
             nonlocal cur_len, sb
@@ -151,7 +162,7 @@ class BackendBot:
         except telethon.errors.rpcerrorlist.ChannelPrivateError:
             return '[无法获取名称]'
 
-    async def str_to_chat_id(self, chat: str) -> int:
+    async def str_to_chat_id(self, chat: Union[int, str]) -> int:
         return await self.session.str_to_chat_id(chat)
 
     async def format_dialog_html(self, chat_id: int):
@@ -186,7 +197,7 @@ class BackendBot:
     def _register_hooks(self):
         @self.session.on(events.NewMessage())
         async def client_message_handler(event: events.NewMessage.Event):
-            if self._should_monitor(event.chat_id) and (msg_text := self._extract_text(event)):
+            if event.chat_id and self._should_monitor(event.chat_id) and (msg_text := self._extract_text(event)):
                 share_id = get_share_id(event.chat_id)
                 sender = await self._get_sender_name(event.message)
                 url = f'https://t.me/c/{share_id}/{event.id}'
@@ -196,14 +207,14 @@ class BackendBot:
                     url=url,
                     chat_id=share_id,
                     post_time=datetime.fromtimestamp(event.date.timestamp()),
-                    sender=sender
+                    sender=sender,
                 )
                 self.newest_msg[share_id] = msg
                 self._indexer.add_document(msg)
 
         @self.session.on(events.MessageEdited())
         async def client_message_update_handler(event: events.MessageEdited.Event):
-            if self._should_monitor(event.chat_id) and (msg_text := self._extract_text(event)):
+            if event.chat_id and self._should_monitor(event.chat_id) and (msg_text := self._extract_text(event)):
                 share_id = get_share_id(event.chat_id)
                 url = f'https://t.me/c/{share_id}/{event.id}'
                 self._logger.info(f'Update message {url} to: "{brief_content(msg_text)}"')
