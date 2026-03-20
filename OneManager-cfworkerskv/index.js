@@ -1070,12 +1070,20 @@ class MS365 {
                 url += ':' + path;
                 if (url.substr(-1) == '/') url = url.substr(0, url.length - 1);
             }
-            url += '?expand=children(select=id,name,size,file,folder,parentReference,lastModifiedDateTime,' + this.DownurlStrName + ')';
+            let url1 = url + '?expand=children(select=id,name,size,file,folder,parentReference,lastModifiedDateTime,' + this.DownurlStrName + ')';
             let retry = 0;
             let arr = new Object();
             while (JSON.stringify(arr) == '{}' || (retry < 3 && arr.status == 0)) {
-                arr = await curl('GET', url, '', { 'Authorization': 'Bearer ' + this.access_token }, 1);
+                arr = await curl('GET', url1, '', { 'Authorization': 'Bearer ' + this.access_token }, 1);
                 retry++;
+            }
+            if (arr['stat'] == 422 && arr['body'].indexOf("getChildrenOnNonFolder") > -1) {
+                let retry = 0;
+                arr = new Object();
+                while (JSON.stringify(arr) == '{}' || (retry < 3 && arr.status == 0)) {
+                    arr = await curl('GET', url, '', { 'Authorization': 'Bearer ' + this.access_token }, 1);
+                    retry++;
+                }
             }
             //console.log(arr);
             //echo url . '<br><pre>' . json_encode($arr, JSON_PRETTY_PRINT) . '</pre>';
