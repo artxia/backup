@@ -48,11 +48,18 @@ const jobMessage = (botHelper, browserWs, skip) => async task => {
 
   let {link} = task;
 
-  if (link.match(/^https?:\/\/t\.me\//)) {
+  if (!link || typeof link !== 'string' || link.match(/^https?:\/\/t\.me\//)) {
     return;
   }
 
-  const {host} = new url.URL(link);
+  let host;
+  try {
+    const parsedUrl = new url.URL(link);
+    host = parsedUrl.host;
+  } catch (e) {
+    console.log('Invalid URL in jobMessage task, skipping:', link);
+    return;
+  }
   let error = '';
   let isBroken = false;
   const resolveMsgId = false;
@@ -72,13 +79,12 @@ const jobMessage = (botHelper, browserWs, skip) => async task => {
     let timeOutLink = false;
     let ivFromDb = false;
     let successIv = false;
+    const isAdm = botHelper.isAdmin(chatId) || (fromId && botHelper.isAdmin(fromId));
+
     try {
       let params = rabbitMq.getMqParams();
-      const isAdm = botHelper.isAdmin(chatId) || (fromId && botHelper.isAdmin(fromId));
+      if (isAdm) params.isadmin = true;
 
-      if (isAdm) {
-        params.isadmin = true;
-      }
       rabbitMq.timeStart();
       link = ivMaker.parse(link);
       const {
@@ -255,7 +261,14 @@ ${RESULT}`;
     if (!error) {
       let mark = inline ? 'i' : '';
       if (isChanMesId) mark += 'c';
-      if (ivFromDb) mark += ' db';
+      if (ivFromDb) {
+        mark += ' (from db)';
+      } else {
+        mark += ' ⚡ fresh';
+      }
+      if (force) {
+        mark += ` (force: ${force.replace(/_/g, '-')})`;
+      }
 
       let logToGroup;
       if (!global.lastLogTime) {
@@ -264,9 +277,10 @@ ${RESULT}`;
       } else {
         logToGroup = isDateMoreADay(global.lastLogTime);
       }
-      // now it disabled by default
+      if (isAdm && (force || !ivFromDb)) logToGroup = true;
+
       if (group && logToGroup) {
-        const text = `${mark ? `${mark} ` : ''}[InstantView](${ivLink}) ${RESULT}\n${durationTime}`;
+        const text = `${mark ? `${mark.trim()} ` : ''}[InstantView](${ivLink}) ${RESULT}\n${durationTime}`;
         botHelper.sendAdminMark(text, group);
         global.lastLogTime = +new Date();
       }

@@ -60,3 +60,5 @@ tmp/
 
 /target
 Cargo.lock
+src/service/commands/*.js*
+.DS_STORE
