@@ -163,25 +163,14 @@ async fn main() -> Result<()> {
 
     debug!("Created {} backend(s)", backends.len());
 
-    // Initialize and start all backends
     for backend in backends.values() {
         backend.initialize().await.map_err(|e| {
             anyhow::anyhow!("Failed to initialize backend '{}': {}", backend.id(), e)
         })?;
-
-        // Spawn backend event loop
-        let backend_clone = backend.clone();
-        let backend_id = backend.id().to_string();
-        backend_tasks.push(tokio::spawn(async move {
-            if let Err(e) = backend_clone.run().await {
-                error!("Backend '{}' event loop error: {}", backend_id, e);
-            }
-        }));
     }
 
-    debug!("Started all backend event loops");
-
-    // Initialize frontends with storage
+    // Initialize frontends with storage. Frontends subscribe to backend error
+    // notices on creation, so backends are started only after this loop.
     let mut frontend_tasks = Vec::new();
     let mut frontend_count = 0;
 
@@ -241,6 +230,19 @@ async fn main() -> Result<()> {
         return Err(anyhow::anyhow!("No frontends configured"));
     }
 
+    // Start all backend event loops
+    for backend in backends.values() {
+        let backend_clone = backend.clone();
+        let backend_id = backend.id().to_string();
+        backend_tasks.push(tokio::spawn(async move {
+            if let Err(e) = backend_clone.run().await {
+                error!("Backend '{}' event loop error: {}", backend_id, e);
+            }
+        }));
+    }
+
+    debug!("Started all backend event loops");
+
     info!("Initialization complete. Press Ctrl+C to stop.");
 
     // Wait for Ctrl+C signal
@@ -257,9 +259,11 @@ async fn main() -> Result<()> {
 fn init_logging(debug: bool, debug_all: bool) {
     use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
-    // grammers_client::client::updates emits spurious "missing its hash" warnings because
-    // PeerAuthCache starts empty and isn't loaded from the session store (grammers limitation).
-    let dep_filter = "grammers_mtsender=warn,grammers_mtproto=warn,grammers_client=error,grammers_session=warn,tantivy=warn,os_info=warn,html5ever=warn";
+    // Keep grammers_client at warn: it reports lost updates only as warnings, e.g.
+    // "cannot getChannelDifference for … as we're missing its hash" or "updates were
+    // dropped because the update_queue_limit was exceeded". Each means messages were
+    // skipped by the live stream (the backend backfills such gaps, see GapDetector).
+    let dep_filter = "grammers_mtsender=warn,grammers_mtproto=warn,grammers_client=warn,grammers_session=warn,tantivy=warn,os_info=warn,html5ever=warn";
     let filter = if debug_all {
         EnvFilter::new("debug")
     } else if debug {

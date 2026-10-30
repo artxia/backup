@@ -10,6 +10,10 @@ pub const STATUS_MESSAGE_LENGTH_LIMIT: usize = 4000;
 const DOWNLOAD_BATCH_SIZE: usize = 1000;
 /// Batch size for progress callbacks during message fetching (independent from indexing batches)
 const FETCH_PROGRESS_BATCH_SIZE: usize = 100;
+/// Minimum interval between admin notices for the same recurring error
+const ERROR_NOTICE_INTERVAL: Duration = Duration::from_secs(3600);
+/// Capacity of the error notice channel (excess notices are dropped and counted)
+const ERROR_NOTICE_CAPACITY: usize = 32;
 
 use crate::config::BackendConfig;
 use crate::session::ClientSession;
@@ -21,11 +25,55 @@ use grammers_client::client::UpdatesConfiguration;
 use grammers_client::update::Message as UpdateMessage; // Update message type
 use grammers_client::update::{MessageDeletion, Update};
 use grammers_mtsender::{ConnectionParams, SenderPool};
+use grammers_session::types::PeerKind;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tg_searcher_index::{IndexMsg, Indexer, SearchResult, SortMode};
-use tokio::sync::{Mutex, watch};
+use tokio::sync::{Mutex, broadcast, mpsc, watch};
 use tracing::{debug, error, info, warn};
+
+/// An error the admin should know about (e.g. indexing failing because the
+/// disk is full). Delivered to frontends via [`BackendBot::error_receiver`].
+#[derive(Debug, Clone)]
+pub struct ErrorNotice {
+    /// What the backend was doing when the error occurred
+    pub context: String,
+    /// The error message
+    pub error: String,
+    /// How many identical errors were suppressed since the previous notice
+    pub suppressed: usize,
+}
+
+/// Rate limiter for error notices. A recurring error (e.g. every incoming
+/// message failing to index) is reported once per [`ERROR_NOTICE_INTERVAL`],
+/// along with the number of occurrences suppressed in between.
+#[derive(Debug, Default)]
+struct ErrorThrottle {
+    last: Option<(String, Instant)>,
+    suppressed: usize,
+}
+
+impl ErrorThrottle {
+    /// Record an occurrence of `error`. Returns `Some(suppressed)` if a notice
+    /// should be sent, `None` if it should be suppressed.
+    fn record(&mut self, error: &str, now: Instant) -> Option<usize> {
+        if let Some((last_error, last_sent)) = &self.last
+            && last_error == error
+        {
+            if now.duration_since(*last_sent) < ERROR_NOTICE_INTERVAL {
+                self.suppressed += 1;
+                return None;
+            }
+        } else {
+            // A different error: counts for the previous one no longer apply
+            self.suppressed = 0;
+        }
+        let suppressed = std::mem::take(&mut self.suppressed);
+        self.last = Some((error.to_string(), now));
+        Some(suppressed)
+    }
+}
 
 /// Per-chat result of the startup catch-up. Reported to the frontend so the
 /// admin can see what (if anything) was downloaded for each monitored chat.
@@ -35,6 +83,42 @@ pub struct CatchupSummary {
     pub indexed_count: usize,
     pub min_msg_id: i32,
     pub max_msg_id: i32,
+}
+
+/// An inclusive msg_id range of a chat that the live update stream skipped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MsgGap {
+    chat_id: i64,
+    min_msg_id: i32,
+    max_msg_id: i32,
+}
+
+/// Tracks the highest msg_id seen per chat in the live update stream and
+/// detects skipped ranges. Only meaningful for channels/supergroups, whose
+/// msg_ids are sequential per chat (every message, including media and
+/// service messages, takes the next id).
+#[derive(Debug, Default)]
+struct GapDetector {
+    last_seen: HashMap<i64, i32>,
+}
+
+impl GapDetector {
+    /// Record a live message. Returns the range skipped since the previous
+    /// message of the same chat, if any. The first message of a chat only
+    /// sets the baseline (startup catch-up covers the time before it).
+    fn observe(&mut self, chat_id: i64, msg_id: i32) -> Option<MsgGap> {
+        let prev = self.last_seen.insert(chat_id, msg_id)?;
+        if msg_id <= prev {
+            // Late or duplicate delivery; keep the high-water mark
+            self.last_seen.insert(chat_id, prev);
+            return None;
+        }
+        (msg_id > prev + 1).then_some(MsgGap {
+            chat_id,
+            min_msg_id: prev + 1,
+            max_msg_id: msg_id - 1,
+        })
+    }
 }
 
 /// Backend bot for indexing messages
@@ -63,9 +147,10 @@ pub struct BackendBot {
     /// Track newest message per chat
     newest_msg: Arc<DashMap<i64, IndexMsg>>,
 
-    /// Per-chat catch-up state. Presence in map ⇒ chat is mid-catch-up;
-    /// vec accumulates msg_ids whose deletions arrived during catch-up
-    /// and must be replayed once catch-up commits writes for that chat.
+    /// Per-chat catch-up state. Presence in map ⇒ chat is mid-download
+    /// (startup catch-up or gap backfill); vec accumulates msg_ids whose
+    /// deletions arrived meanwhile and must be replayed once the download
+    /// commits writes for that chat.
     catchup_state: Arc<Mutex<HashMap<i64, Vec<i32>>>>,
 
     /// Set to `true` once `run_catchup` has finished. Backed by a watch
@@ -77,6 +162,13 @@ pub struct BackendBot {
     /// actually had new messages indexed). Read by the frontend after the
     /// `catchup_done_tx` signal fires.
     catchup_results: Arc<Mutex<Vec<CatchupSummary>>>,
+
+    /// Error notices for the admin. Frontends subscribe before the backend
+    /// starts running so that no notice is missed.
+    error_tx: broadcast::Sender<ErrorNotice>,
+
+    /// Rate limiter for `error_tx`
+    error_throttle: std::sync::Mutex<ErrorThrottle>,
 
     /// Configuration
     monitor_all: bool,
@@ -117,6 +209,8 @@ impl BackendBot {
             catchup_state: Arc::new(Mutex::new(HashMap::new())),
             catchup_done_tx: watch::channel(false).0,
             catchup_results: Arc::new(Mutex::new(Vec::new())),
+            error_tx: broadcast::channel(ERROR_NOTICE_CAPACITY).0,
+            error_throttle: std::sync::Mutex::new(ErrorThrottle::default()),
             monitor_all: config.config.monitor_all,
         })
     }
@@ -174,7 +268,9 @@ impl BackendBot {
                 updates,
                 UpdatesConfiguration {
                     catch_up: false, // Don't fetch old updates - only receive new ones from now
-                    ..Default::default()
+                    // Never drop updates. The default (100) silently discards
+                    // updates whenever indexing falls behind a burst.
+                    update_queue_limit: None,
                 },
             )
             .await
@@ -187,8 +283,14 @@ impl BackendBot {
         // Run catch-up concurrently with the live update loop. Catch-up writes
         // commit first; deletes that arrive while a chat is catching up are
         // buffered (see handle_message_deleted) and replayed once that chat's
-        // catch-up finishes, so they cannot be silently lost.
-        tokio::try_join!(self.run_catchup(), self.run_main_loop(&mut updates))?;
+        // catch-up finishes, so they cannot be silently lost. Gaps detected in
+        // the live stream are backfilled the same way, off the update loop.
+        let (gap_tx, gap_rx) = mpsc::unbounded_channel();
+        tokio::try_join!(
+            self.run_catchup(),
+            self.run_main_loop(&mut updates, gap_tx),
+            self.run_gap_filler(gap_rx),
+        )?;
 
         warn!("[{}] event loop exited", self.id);
         Ok(())
@@ -196,15 +298,22 @@ impl BackendBot {
 
     /// Main update-stream loop. Extracted from `run()` so catch-up can run
     /// concurrently via `tokio::try_join!`.
+    ///
+    /// Skipped msg_id ranges in channels are sent to `gap_tx` for backfill.
+    /// The stream can lose updates (e.g. grammers giving up on a channel
+    /// difference), and startup catch-up only covers messages newer than the
+    /// latest indexed one, so without this such gaps would never be filled.
     async fn run_main_loop(
         &self,
         updates: &mut grammers_client::client::UpdateStream,
+        gap_tx: mpsc::UnboundedSender<MsgGap>,
     ) -> Result<()> {
+        let mut gap_detector = GapDetector::default();
         loop {
             let update = match updates.next().await {
                 Ok(update) => update,
                 Err(e) => {
-                    error!("[{}] error getting update: {}", self.id, e);
+                    self.report_error("update stream failed, no longer indexing new messages", &e);
                     break;
                 }
             };
@@ -220,10 +329,23 @@ impl BackendBot {
                         "[{}] new message in chat {} msg_id={}",
                         self.id, share_id, msg_id
                     );
+                    if message.peer_id().kind() == PeerKind::Channel
+                        && let Some(gap) = gap_detector.observe(share_id, msg_id)
+                    {
+                        warn!(
+                            "[{}] live updates skipped chat {} msg_id {}..={}, queueing backfill",
+                            self.id, share_id, gap.min_msg_id, gap.max_msg_id
+                        );
+                        // Err only means the gap filler has exited
+                        let _ = gap_tx.send(gap);
+                    }
                     if let Err(e) = self.handle_new_message(message).await {
-                        error!(
-                            "[{}] error handling new message (chat={} msg_id={}): {}",
-                            self.id, share_id, msg_id, e
+                        self.report_error(
+                            &format!(
+                                "error handling new message (chat={} msg_id={})",
+                                share_id, msg_id
+                            ),
+                            &e,
                         );
                     }
                 }
@@ -238,9 +360,12 @@ impl BackendBot {
                         self.id, share_id, msg_id
                     );
                     if let Err(e) = self.handle_message_edited(message).await {
-                        error!(
-                            "[{}] error handling edited message (chat={} msg_id={}): {}",
-                            self.id, share_id, msg_id, e
+                        self.report_error(
+                            &format!(
+                                "error handling edited message (chat={} msg_id={})",
+                                share_id, msg_id
+                            ),
+                            &e,
                         );
                     }
                 }
@@ -255,9 +380,9 @@ impl BackendBot {
                         self.id, channel_id, msg_ids
                     );
                     if let Err(e) = self.handle_message_deleted(deletion).await {
-                        error!(
-                            "[{}] error handling message deletion (chat={:?}): {}",
-                            self.id, channel_id, e
+                        self.report_error(
+                            &format!("error handling message deletion (chat={:?})", channel_id),
+                            &e,
                         );
                     }
                 }
@@ -277,7 +402,7 @@ impl BackendBot {
         info!("[{}] catch-up starting for {} chat(s)", self.id, chat_count);
         for chat_id in chats {
             if let Err(e) = self.catch_up_chat(chat_id).await {
-                warn!("[{}] catch-up failed for chat {}: {}", self.id, chat_id, e);
+                self.report_error(&format!("catch-up failed for chat {}", chat_id), &e);
             }
         }
         info!("[{}] catch-up done", self.id);
@@ -291,6 +416,32 @@ impl BackendBot {
     /// subscription timing.
     pub fn catchup_done_receiver(&self) -> watch::Receiver<bool> {
         self.catchup_done_tx.subscribe()
+    }
+
+    /// Subscribe to error notices. Only notices sent after subscribing are
+    /// received, so subscribe before calling `run()`.
+    pub fn error_receiver(&self) -> broadcast::Receiver<ErrorNotice> {
+        self.error_tx.subscribe()
+    }
+
+    /// Log an error and notify the admin (rate-limited per distinct error).
+    fn report_error(&self, context: &str, err: &dyn std::fmt::Display) {
+        error!("[{}] {}: {}", self.id, context, err);
+        let error = err.to_string();
+        let Some(suppressed) = self
+            .error_throttle
+            .lock()
+            .unwrap()
+            .record(&error, Instant::now())
+        else {
+            return;
+        };
+        // Err only means no frontend is subscribed
+        let _ = self.error_tx.send(ErrorNotice {
+            context: context.to_string(),
+            error,
+            suppressed,
+        });
     }
 
     /// Per-chat catch-up summaries collected during the startup pass.
@@ -310,11 +461,81 @@ impl BackendBot {
             return Ok(());
         };
 
+        let r = self
+            .download_buffering_deletes(share_id, Some(latest + 1), None)
+            .await?;
+        info!(
+            "[{}] catch-up indexed {} msg(s) for chat {} (msg_id range {}..{})",
+            self.id, r.indexed_count, share_id, r.min_msg_id, r.max_msg_id
+        );
+        if r.indexed_count > 0 {
+            self.catchup_results.lock().await.push(CatchupSummary {
+                chat_id: share_id,
+                indexed_count: r.indexed_count,
+                min_msg_id: r.min_msg_id,
+                max_msg_id: r.max_msg_id,
+            });
+        }
+        Ok(())
+    }
+
+    /// Backfill msg_id ranges the live update stream skipped (see
+    /// `run_main_loop`). Starts after startup catch-up so the two never
+    /// download the same chat concurrently; returns when `gaps` is closed.
+    async fn run_gap_filler(&self, mut gaps: mpsc::UnboundedReceiver<MsgGap>) -> Result<()> {
+        if self
+            .catchup_done_receiver()
+            .wait_for(|&done| done)
+            .await
+            .is_err()
+        {
+            return Ok(());
+        }
+        while let Some(gap) = gaps.recv().await {
+            debug!(
+                "[{}] backfilling live update gap in chat {} (msg_id {}..={})",
+                self.id, gap.chat_id, gap.min_msg_id, gap.max_msg_id
+            );
+            match self
+                .download_buffering_deletes(gap.chat_id, Some(gap.min_msg_id), Some(gap.max_msg_id))
+                .await
+            {
+                // Nothing to index: the skipped ids were media or deleted messages
+                Ok(r) if r.indexed_count == 0 => {}
+                Ok(r) => self.report_error(
+                    &format!(
+                        "backfilled {} msg(s) in chat {} (msg_id {}..={})",
+                        r.indexed_count, gap.chat_id, gap.min_msg_id, gap.max_msg_id
+                    ),
+                    &"live update stream skipped messages",
+                ),
+                Err(e) => self.report_error(
+                    &format!(
+                        "failed to backfill live update gap in chat {} (msg_id {}..={})",
+                        gap.chat_id, gap.min_msg_id, gap.max_msg_id
+                    ),
+                    &e,
+                ),
+            }
+        }
+        Ok(())
+    }
+
+    /// Run `download_history` for a range while buffering deletions that
+    /// arrive concurrently from the live update stream, then replay them.
+    /// Otherwise a delete arriving before the download indexes msg X would be
+    /// a no-op and X would be re-added as a zombie.
+    async fn download_buffering_deletes(
+        &self,
+        share_id: i64,
+        min_id: Option<i32>,
+        max_id: Option<i32>,
+    ) -> Result<DownloadResult> {
         // Open the deletion buffer atomically.
         self.catchup_state.lock().await.insert(share_id, Vec::new());
 
         let download_result = self
-            .download_history::<fn(DownloadProgress)>(share_id, Some(latest + 1), None, None)
+            .download_history::<fn(DownloadProgress)>(share_id, min_id, max_id, None)
             .await;
 
         // Always close the buffer, even on download error, to avoid leaking
@@ -326,27 +547,6 @@ impl BackendBot {
             .remove(&share_id)
             .unwrap_or_default();
 
-        match &download_result {
-            Ok(r) => {
-                info!(
-                    "[{}] catch-up indexed {} msg(s) for chat {} (msg_id range {}..{})",
-                    self.id, r.indexed_count, share_id, r.min_msg_id, r.max_msg_id
-                );
-                if r.indexed_count > 0 {
-                    self.catchup_results.lock().await.push(CatchupSummary {
-                        chat_id: share_id,
-                        indexed_count: r.indexed_count,
-                        min_msg_id: r.min_msg_id,
-                        max_msg_id: r.max_msg_id,
-                    });
-                }
-            }
-            Err(e) => warn!(
-                "[{}] catch-up download failed for chat {}: {}",
-                self.id, share_id, e
-            ),
-        }
-
         if !pending.is_empty() {
             info!(
                 "[{}] applying {} buffered deletion(s) for chat {}",
@@ -357,15 +557,15 @@ impl BackendBot {
             for msg_id in pending {
                 let url = format!("https://t.me/c/{}/{}", share_id, msg_id);
                 if let Err(e) = self.indexer.delete_document(&url).await {
-                    warn!(
-                        "[{}] buffered delete failed (msg {} chat {}): {}",
-                        self.id, msg_id, share_id, e
+                    self.report_error(
+                        &format!("buffered delete failed (msg {} chat {})", msg_id, share_id),
+                        &e,
                     );
                 }
             }
         }
 
-        download_result.map(|_| ())
+        download_result
     }
 
     /// Search messages
@@ -502,7 +702,10 @@ impl BackendBot {
         // Iterate messages (fetches from newest to oldest by default).
         // We stream-fetch and index in the same loop (no buffering / reordering required).
         let client = self.get_client()?;
-        let mut message_iter = client.iter_messages(chat).offset_id(max_id.unwrap_or(0));
+        // offset_id is exclusive; +1 makes max_id inclusive
+        let mut message_iter = client
+            .iter_messages(chat)
+            .offset_id(max_id.map_or(0, |max| max.saturating_add(1)));
 
         let mut fetched_count: usize = 0;
         let mut indexed_count: usize = 0;
@@ -595,9 +798,16 @@ impl BackendBot {
             self.indexer.add_documents_batch(batch).await?;
         }
 
-        // Update newest message
+        // Update newest message, unless a range download fetched only older ones
         if let Some(msg) = newest {
-            self.newest_msg.insert(share_id, msg);
+            self.newest_msg
+                .entry(share_id)
+                .and_modify(|cur| {
+                    if msg.post_time > cur.post_time {
+                        *cur = msg.clone();
+                    }
+                })
+                .or_insert(msg);
         }
 
         info!(
@@ -1018,5 +1228,70 @@ impl BackendBot {
             .ok_or_else(|| crate::types::Error::EntityNotFound(username.to_string()))?;
 
         Ok(get_share_id(peer.id().bot_api_dialog_id_unchecked()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_throttle_suppresses_repeats() {
+        let mut t = ErrorThrottle::default();
+        let t0 = Instant::now();
+        assert_eq!(t.record("disk full", t0), Some(0));
+        assert_eq!(t.record("disk full", t0 + Duration::from_secs(1)), None);
+        assert_eq!(t.record("disk full", t0 + Duration::from_secs(2)), None);
+        // Re-sent after the interval, carrying the suppressed count
+        assert_eq!(t.record("disk full", t0 + ERROR_NOTICE_INTERVAL), Some(2));
+        assert_eq!(
+            t.record(
+                "disk full",
+                t0 + ERROR_NOTICE_INTERVAL + Duration::from_secs(1)
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn test_gap_detector() {
+        let mut d = GapDetector::default();
+        // First message of a chat only sets the baseline
+        assert_eq!(d.observe(1, 100), None);
+        assert_eq!(d.observe(1, 101), None);
+        assert_eq!(
+            d.observe(1, 105),
+            Some(MsgGap {
+                chat_id: 1,
+                min_msg_id: 102,
+                max_msg_id: 104,
+            })
+        );
+        // Late delivery of a skipped message neither reports nor lowers the mark
+        assert_eq!(d.observe(1, 103), None);
+        assert_eq!(d.observe(1, 105), None);
+        assert_eq!(d.observe(1, 106), None);
+        // Chats are tracked independently
+        assert_eq!(d.observe(2, 50), None);
+        assert_eq!(
+            d.observe(2, 52),
+            Some(MsgGap {
+                chat_id: 2,
+                min_msg_id: 51,
+                max_msg_id: 51,
+            })
+        );
+        assert_eq!(d.observe(1, 107), None);
+    }
+
+    #[test]
+    fn test_error_throttle_new_error_sent_immediately() {
+        let mut t = ErrorThrottle::default();
+        let t0 = Instant::now();
+        assert_eq!(t.record("disk full", t0), Some(0));
+        assert_eq!(t.record("disk full", t0), None);
+        assert_eq!(t.record("writer killed", t0), Some(0));
+        // Switching back counts as a new error again
+        assert_eq!(t.record("disk full", t0), Some(0));
     }
 }
