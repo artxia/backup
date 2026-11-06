@@ -252,7 +252,7 @@ const format = (bot, botHelper, skipCountBool) => {
 
         let {text} = msg;
 
-        const isAdm = botHelper.isAdmin(chatId);
+        const isAdm = botHelper.isAdmin(chatId) || (from && botHelper.isAdmin(from.id));
         const rpl = rplToMsg;
         let pdfData = {};
 
@@ -260,8 +260,8 @@ const format = (bot, botHelper, skipCountBool) => {
             const {file_name, mime_type, file_id, file_size} = msg.document;
             if (!file_name) return;
             if (
-                file_name.match(/.pdf$/) &&
-                mime_type === 'application/pdf'
+                (file_name.match(/\.pdf$/i) && mime_type === 'application/pdf') ||
+                file_name.match(/\.md$/i)
             ) {
                 if (file_size < 4e6) {
                     const cnt = await db.get({
@@ -291,8 +291,10 @@ const format = (bot, botHelper, skipCountBool) => {
                         }
                     }
                     pdfData.pdf = file_id;
-                    pdfData.pdfTitle = file_name.replace(/[^a-z\s0-9]/gi, '').replace(/\s/g, '_');
-                    text = PDF_LINK + encodeURI(file_name);
+                    pdfData.fileName = file_name;
+                    pdfData.pdfTitle = file_name.replace(/[^a-zа-яё\s0-9]/gi, '').replace(/\s/g, '_') || 'document';
+                    if (file_name.match(/\.md$/i)) pdfData.isMd = true;
+                    text = PDF_LINK + encodeURIComponent(file_name);
                 } else {
                     console.log('big pdf');
                     if (isChannelPost) return;
@@ -355,7 +357,7 @@ const format = (bot, botHelper, skipCountBool) => {
                 let _force = commandNoDb(text)
                 if (link.match(new RegExp(validRegex)) && !_force) {
                     ctx
-                        .reply(messages.showIvMessage('', link, link, parsed.host), {
+                        .reply(messages.showIvMessage('', link, parsed.host), {
                             parse_mode: botHelper.markdown(),
                         })
                         .catch(e => {

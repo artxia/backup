@@ -44,6 +44,8 @@ const jobMessage = (botHelper, browserWs, skip) => async task => {
     pdf,
     pdfReset,
     pdfTitle,
+    isMd,
+    fileName,
   } = task;
 
   let {link} = task;
@@ -143,6 +145,7 @@ const jobMessage = (botHelper, browserWs, skip) => async task => {
               // console.log(pdfLink);
               params.pdf = pdfLink.href;
               params.pdfTitle = pdfTitle;
+              if (isMd) params.isMd = true;
             }
             ivTask = ivMaker.makeIvLink(link, params);
           }
@@ -199,7 +202,12 @@ const jobMessage = (botHelper, browserWs, skip) => async task => {
           } else pdfUpd.iv = 'pdf';
           await db.updateOneLink(pdfUpd, db.getCol(dbKeys.counter));
         }
-        RESULT = messages.showIvMessage(longStr, iv, `${link}`, host);
+        if (pdf) {
+          const safeFileName = (fileName || pdfTitle || host).replace(/_/g, '\\_');
+          RESULT = `${longStr ? `${longStr} ` : ''}from ${safeFileName}`;
+        } else {
+          RESULT = messages.showIvMessage(longStr, `${link}`, host);
+        }
         successIv = true;
       }
     } catch (e) {
