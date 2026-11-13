@@ -150,15 +150,31 @@ const botRoute = (bot, conn) => {
     }
   });
 
-  bot.command(['restartApp', 'restartapp'], ({message}) => {
-    if (botHelper.isAdmin(message.from.id)) {
+  const isStaleAdminCommand = message =>
+    message && message.date && (Math.floor(Date.now() / 1000) - message.date > 30);
+
+  const isAdminMessage = message =>
+    message && ((message.from && botHelper.isAdmin(message.from.id)) || (message.chat && botHelper.isAdmin(message.chat.id)));
+
+  bot.command(/^restartapp$/i, async ctx => {
+    const {message, update} = ctx;
+    if (isAdminMessage(message)) {
+      if (isStaleAdminCommand(message)) return;
+      if (update && update.update_id) {
+        await ctx.telegram.callApi('getUpdates', {offset: update.update_id + 1, limit: 1, timeout: 0}).catch(() => {});
+      }
       botHelper.restartApp();
     }
   });
 
-  bot.command(['gitPull', 'gitpull'], ({message}) => {
-    if (botHelper.isAdmin(message.from.id)) {
-      botHelper.sendAdmin('Executing git pull...', message.chat.id);
+  bot.command(/^gitpull$/i, async ctx => {
+    const {message, update} = ctx;
+    if (isAdminMessage(message)) {
+      if (isStaleAdminCommand(message)) return;
+      if (update && update.update_id) {
+        await ctx.telegram.callApi('getUpdates', {offset: update.update_id + 1, limit: 1, timeout: 0}).catch(() => {});
+      }
+      await botHelper.sendAdmin('Executing git pull...', message.chat.id);
       botHelper.gitPull(message.chat.id);
     }
   });
