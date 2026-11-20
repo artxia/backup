@@ -17,6 +17,7 @@
         , rustc
         , cargo
         , icu
+        , zstd
         , pkg-config
         , llvmPackages
         , runCommand
@@ -45,9 +46,10 @@
 
           buildInputs = [
             icu
+            zstd
           ];
 
-          cargoHash = "sha256-oCSEExo9jNNsdWgbIfz71aRhZ96Dgz2ExAdCfxDt/mM=";
+          cargoHash = "sha256-Xhr5sUYTrZQEVgHidsX9sjxCprg67h4ItUdnl5MIjds=";
           meta.mainProgram = name;
         };
 
